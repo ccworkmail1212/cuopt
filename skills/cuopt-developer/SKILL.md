@@ -309,3 +309,13 @@ rmm::device_uvector<int> data(100, stream);
 - **No package installs by default** - ask before pip/conda/apt
 - **No privileged changes** - never use sudo without explicit request
 - **Workspace-only file changes** - ask for permission for writes outside repo
+
+---
+
+## VRP dimension internals (routing engine)
+
+When implementing or debugging **VRP dimensions** (constraints, objectives, forward/backward propagation, `combine`, local-search deltas), read:
+
+- **`skills/cuopt-developer/vrp_skills.md`** — architecture contracts, required interfaces, and implementation checklist.
+
+Read it **before** adding a new dimension or changing combine semantics.
