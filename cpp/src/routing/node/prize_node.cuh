@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -30,13 +30,21 @@ class prize_node_t {
   double prize_backward = 0.0;
 
   /*! \brief { Calculate next node forward time data based on actual node} */
-  void HDI calculate_forward(prize_node_t& next, [[maybe_unused]] double dummy = 0.) const noexcept
+  template <bool is_device = true>
+  void HDI
+  calculate_forward(prize_node_t& next,
+                    [[maybe_unused]] double dummy,
+                    [[maybe_unused]] const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
     next.prize_forward = prize_forward + next.prize;
   }
 
   /*! \brief { Calculate prev node time backward data based on actual node} */
-  void HDI calculate_backward(prize_node_t& prev, [[maybe_unused]] double dummy = 0.) const noexcept
+  template <bool is_device = true>
+  void HDI calculate_backward(
+    prize_node_t& prev,
+    [[maybe_unused]] double dummy,
+    [[maybe_unused]] const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
     prev.prize_backward = prize_backward + prize;
   }

@@ -10,6 +10,7 @@
 #include "break_route.cuh"
 #include "capacity_route.cuh"
 #include "distance_route.cuh"
+#include "lot_schedule_route.cuh"
 #include "mismatch_route.cuh"
 #include "pdp_route.cuh"
 #include "prize_route.cuh"
@@ -60,10 +61,13 @@ using route_from_dim = typename std::conditional<
             typename std::conditional<
               ((dim_t)I == dim_t::MISMATCH),
               mismatch_route_t<i_t, f_t>,
-              typename std::conditional<((dim_t)I == dim_t::BREAK),
-                                        break_route_t<i_t, f_t>,
-                                        vehicle_fixed_cost_route_t<i_t, f_t>>::type>::type>::type>::
-          type>::type>::type>::type>::type;
+              typename std::conditional<
+                ((dim_t)I == dim_t::BREAK),
+                break_route_t<i_t, f_t>,
+                typename std::conditional<((dim_t)I == dim_t::VEHICLE_FIXED_COST),
+                                          vehicle_fixed_cost_route_t<i_t, f_t>,
+                                          lot_schedule_route_t<i_t, f_t>>::type>::type>::type>::
+            type>::type>::type>::type>::type>::type;
 template <typename i_t, typename f_t, request_t REQUEST>
 class dimensions_route_t {
  public:
@@ -81,6 +85,7 @@ class dimensions_route_t {
       break_dim(sol_handle_, dimensions_info_.get_dimension<dim_t::BREAK>()),
       vehicle_fixed_cost_dim(sol_handle_,
                              dimensions_info_.get_dimension<dim_t::VEHICLE_FIXED_COST>()),
+      lot_schedule_dim(sol_handle_, dimensions_info_.get_dimension<dim_t::LOT_SCHEDULE>()),
       requests(sol_handle_),
       dimensions_info(dimensions_info_)
   {
@@ -98,6 +103,7 @@ class dimensions_route_t {
       mismatch_dim(dim_route.mismatch_dim, dim_route.sol_handle),
       break_dim(dim_route.break_dim, dim_route.sol_handle),
       vehicle_fixed_cost_dim(dim_route.vehicle_fixed_cost_dim, dim_route.sol_handle),
+      lot_schedule_dim(dim_route.lot_schedule_dim, dim_route.sol_handle),
       requests(dim_route.requests, dim_route.sol_handle),
       dimensions_info(dim_route.dimensions_info)
   {
@@ -218,6 +224,7 @@ class dimensions_route_t {
     typename mismatch_route_t<i_t, f_t>::view_t mismatch_dim;
     typename break_route_t<i_t, f_t>::view_t break_dim;
     typename vehicle_fixed_cost_route_t<i_t, f_t>::view_t vehicle_fixed_cost_dim;
+    typename lot_schedule_route_t<i_t, f_t>::view_t lot_schedule_dim;
     enabled_dimensions_t dimensions_info{};
   };
 
@@ -290,6 +297,9 @@ class dimensions_route_t {
 
   // vehicle cost route
   vehicle_fixed_cost_route_t<i_t, f_t> vehicle_fixed_cost_dim;
+
+  // lot schedule route (lot scheduling WCT objective)
+  lot_schedule_route_t<i_t, f_t> lot_schedule_dim;
 
   // encoded struct to get enabled dimensions info
   enabled_dimensions_t dimensions_info;

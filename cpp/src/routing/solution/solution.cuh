@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -92,6 +92,12 @@ DI node_t<i_t, f_t, REQUEST> create_node(const typename problem_t<i_t, f_t>::vie
 
   node.prize_dim.prize = problem.order_info.prizes[node_idx];
 
+  if (problem.dimensions_info.has_dimension(dim_t::LOT_SCHEDULE) &&
+      !problem.order_info.lot_weights.empty()) {
+    node.lot_schedule_dim.lot_weight = problem.order_info.lot_weights[node_idx];
+    node.lot_schedule_dim.node_id    = node_idx;
+  }
+
   node.request = request_info_t<i_t, REQUEST>(node_info, brother_info);
   return node;
 }
@@ -159,6 +165,12 @@ constexpr node_t<i_t, f_t, REQUEST> create_node(const problem_t<i_t, f_t>* probl
   });
 
   node.prize_dim.prize = problem->order_info_h.prizes[node_idx];
+
+  if (problem->dimensions_info.has_dimension(dim_t::LOT_SCHEDULE) &&
+      !problem->order_info_h.lot_weights.empty()) {
+    node.lot_schedule_dim.lot_weight = problem->order_info_h.lot_weights[node_idx];
+    node.lot_schedule_dim.node_id    = node_idx;
+  }
 
   node.request = request_info_t<i_t, REQUEST>(node_info, brother_info);
   return node;
@@ -244,8 +256,10 @@ DI node_t<i_t, f_t, REQUEST> create_depot_node(const typename problem_t<i_t, f_t
     if (i < node.capacity_dim.n_capacity_dimensions) { node.capacity_dim.demand[i] = 0; }
   });
 
-  node.prize_dim.prize = 0.;
-  node.request         = request_info_t<i_t, REQUEST>(node_info, brother_info);
+  node.prize_dim.prize             = 0.;
+  node.lot_schedule_dim.lot_weight = 0.;
+  node.lot_schedule_dim.node_id    = -1;
+  node.request                     = request_info_t<i_t, REQUEST>(node_info, brother_info);
   return node;
 }
 
@@ -280,8 +294,10 @@ constexpr node_t<i_t, f_t, REQUEST> create_depot_node(const problem_t<i_t, f_t>*
     if (i < node.capacity_dim.n_capacity_dimensions) { node.capacity_dim.demand[i] = 0; }
   });
 
-  node.prize_dim.prize = 0.;
-  node.request         = request_info_t<i_t, REQUEST>(node_info, brother_info);
+  node.prize_dim.prize             = 0.;
+  node.lot_schedule_dim.lot_weight = 0.;
+  node.lot_schedule_dim.node_id    = -1;
+  node.request                     = request_info_t<i_t, REQUEST>(node_info, brother_info);
   return node;
 }
 

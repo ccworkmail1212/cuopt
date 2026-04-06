@@ -113,12 +113,10 @@ class mismatch_route_t {
       i_t* shmem, const mismatch_dimension_info_t dim_info, i_t n_nodes_route)
     {
       view_t v;
-      v.dim_info          = dim_info;
-      v.mismatch_forward  = raft::device_span<i_t>{(i_t*)shmem, (size_t)n_nodes_route + 1};
-      v.mismatch_backward = raft::device_span<i_t>{
-        (i_t*)&v.mismatch_forward.data()[n_nodes_route + 1], (size_t)n_nodes_route + 1};
-
-      i_t* sh_ptr = (i_t*)&v.mismatch_backward.data()[n_nodes_route + 1];
+      i_t* sh_ptr                              = shmem;
+      v.dim_info                               = dim_info;
+      thrust::tie(v.mismatch_forward, sh_ptr)  = wrap_ptr_as_span<i_t>(sh_ptr, n_nodes_route + 1);
+      thrust::tie(v.mismatch_backward, sh_ptr) = wrap_ptr_as_span<i_t>(sh_ptr, n_nodes_route + 1);
       return thrust::make_tuple(v, sh_ptr);
     }
 

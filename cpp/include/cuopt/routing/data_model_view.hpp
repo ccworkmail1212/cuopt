@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -346,6 +346,15 @@ class data_model_view_t {
   void set_order_prizes(f_t const* prizes, bool validate_input = true);
 
   /**
+   * @brief Set per-lot weights for the lot scheduling objective.
+   *        Weight controls the priority of each lot in the weighted completion
+   *        time and qtime penalty objectives.
+   *
+   * @param[in] lot_weights Per-order weight array (double, size = num_orders)
+   */
+  void set_order_lot_weights(double const* lot_weights);
+
+  /**
    * @brief Add precedence constraints for a given order.
    * For each order that needs to come after one or more orders call this
    * function. Currently circular dependencies are not accepted.
@@ -563,6 +572,12 @@ class data_model_view_t {
   raft::device_span<f_t const> get_order_prizes() const noexcept;
 
   /**
+   * @brief Get per-lot weights set via set_order_lot_weights
+   * @return raft::device_span<double const>
+   */
+  raft::device_span<double const> get_order_lot_weights() const noexcept;
+
+  /**
    * @brief Get pickup delivery pairs
    * @return Pair of pointers containing pick up and delivery indices
    */
@@ -625,6 +640,7 @@ class data_model_view_t {
   detail::order_time_window_t<i_t, f_t> order_tw_{};
 
   raft::device_span<f_t const> order_prizes_;
+  raft::device_span<double const> order_lot_weights_;
 
   i_t const* start_locations_{nullptr};
   i_t const* return_locations_{nullptr};

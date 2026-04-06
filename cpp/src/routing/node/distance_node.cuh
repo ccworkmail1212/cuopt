@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -21,13 +21,21 @@ class distance_node_t {
   double distance_backward = 0.0;
 
   /*! \brief { Calculate next node forward gathered distance data based on actual node} */
-  void HDI calculate_forward(distance_node_t& next, double distance_between) const noexcept
+  template <bool is_device = true>
+  void HDI
+  calculate_forward(distance_node_t& next,
+                    double distance_between,
+                    [[maybe_unused]] const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
     next.distance_forward = distance_forward + distance_between;
   }
 
   /*! \brief { Calculate prev node gathered distance backward data based on actual node} */
-  void HDI calculate_backward(distance_node_t& prev, double distance_between) const noexcept
+  template <bool is_device = true>
+  void HDI calculate_backward(
+    distance_node_t& prev,
+    double distance_between,
+    [[maybe_unused]] const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
     prev.distance_backward = distance_backward + distance_between;
   }

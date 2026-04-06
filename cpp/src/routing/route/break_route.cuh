@@ -118,13 +118,11 @@ class break_route_t {
                                                               const break_dimension_info_t dim_info,
                                                               i_t n_nodes_route)
     {
+      i_t* sh_ptr = shmem;
       view_t v;
-      v.dim_info        = dim_info;
-      v.breaks_forward  = raft::device_span<int>{(int*)shmem, (size_t)n_nodes_route + 1};
-      v.breaks_backward = raft::device_span<int>{(int*)&v.breaks_forward.data()[n_nodes_route + 1],
-                                                 (size_t)n_nodes_route + 1};
-
-      i_t* sh_ptr = (i_t*)&v.breaks_backward.data()[n_nodes_route + 1];
+      v.dim_info                             = dim_info;
+      thrust::tie(v.breaks_forward, sh_ptr)  = wrap_ptr_as_span<int>(sh_ptr, n_nodes_route + 1);
+      thrust::tie(v.breaks_backward, sh_ptr) = wrap_ptr_as_span<int>(sh_ptr, n_nodes_route + 1);
       return thrust::make_tuple(v, sh_ptr);
     }
 

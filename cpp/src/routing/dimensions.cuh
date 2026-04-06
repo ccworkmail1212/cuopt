@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -28,6 +28,7 @@ enum class dim_t {
   MISMATCH,
   BREAK,
   VEHICLE_FIXED_COST,
+  LOT_SCHEDULE,
   SIZE
 };
 
@@ -227,6 +228,10 @@ struct vehicle_fixed_cost_dimension_info_t {
   constexpr bool has_constraints() const { return false; };
 };
 
+struct lot_schedule_dimension_info_t {
+  constexpr bool has_constraints() const { return false; }
+};
+
 /**
  * @brief Get const reference to specified dimension of an object. This assumes that the object
  * being passed has all the dimensions and they are named in a specific way
@@ -257,6 +262,8 @@ static HDI const auto& get_dimension_of(const T& obj) noexcept
     return obj.break_dim;
   } else if constexpr (I == dim_t::VEHICLE_FIXED_COST) {
     return obj.vehicle_fixed_cost_dim;
+  } else if constexpr (I == dim_t::LOT_SCHEDULE) {
+    return obj.lot_schedule_dim;
   }
 }
 
@@ -294,6 +301,8 @@ constexpr auto dim_to_string() noexcept
     return "Break dimension";
   } else if constexpr (I == (int)dim_t::VEHICLE_FIXED_COST) {
     return "Vehicle cost dimension";
+  } else if constexpr (I == (int)dim_t::LOT_SCHEDULE) {
+    return "Lot schedule dimension";
   }
 }
 
@@ -404,6 +413,7 @@ class enabled_dimensions_t {
   mismatch_dimension_info_t mismatch_dim;
   break_dimension_info_t break_dim;
   vehicle_fixed_cost_dimension_info_t vehicle_fixed_cost_dim;
+  lot_schedule_dimension_info_t lot_schedule_dim;
 
   objective_cost_t objective_weights;
   bool is_tsp{false};
@@ -414,7 +424,7 @@ class enabled_dimensions_t {
   static_assert((size_t)dim_t::SIZE < 32u, "Use higher precision integer!");
   uint32_t hash = 0;
 
-  static_assert((size_t)objective_t::SIZE < 8u, "Use higher precision integer!");
+  static_assert((size_t)objective_t::SIZE <= 8u, "Use higher precision integer!");
   uint8_t obj_hash = 0;
 };
 

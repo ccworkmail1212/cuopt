@@ -120,14 +120,11 @@ class prize_route_t {
                                                               i_t n_nodes_route)
     {
       view_t v;
-      v.dim_info       = dim_info;
-      v.prize          = raft::device_span<double>{(double*)shmem, (size_t)n_nodes_route + 1};
-      v.prize_forward  = raft::device_span<double>{(double*)&v.prize.data()[n_nodes_route + 1],
-                                                   (size_t)n_nodes_route + 1};
-      v.prize_backward = raft::device_span<double>{
-        (double*)&v.prize_forward.data()[n_nodes_route + 1], (size_t)n_nodes_route + 1};
-
-      i_t* sh_ptr = (i_t*)&v.prize_backward.data()[n_nodes_route + 1];
+      i_t* sh_ptr                           = shmem;
+      v.dim_info                            = dim_info;
+      thrust::tie(v.prize, sh_ptr)          = wrap_ptr_as_span<double>(sh_ptr, n_nodes_route + 1);
+      thrust::tie(v.prize_forward, sh_ptr)  = wrap_ptr_as_span<double>(sh_ptr, n_nodes_route + 1);
+      thrust::tie(v.prize_backward, sh_ptr) = wrap_ptr_as_span<double>(sh_ptr, n_nodes_route + 1);
       return thrust::make_tuple(v, sh_ptr);
     }
 

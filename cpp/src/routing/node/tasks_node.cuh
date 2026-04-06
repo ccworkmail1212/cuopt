@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -21,13 +21,21 @@ class tasks_node_t {
   i_t tasks_backward = 0;
 
   /*! \brief { Calculate next node forward gathered distance data based on actual node} */
-  void HDI calculate_forward(tasks_node_t& next, [[maybe_unused]] f_t dummy = 0.) const noexcept
+  template <bool is_device = true>
+  void HDI
+  calculate_forward(tasks_node_t& next,
+                    [[maybe_unused]] f_t dummy,
+                    [[maybe_unused]] const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
     next.tasks_forward = tasks_forward + 1;
   }
 
   /*! \brief { Calculate prev node gathered distance backward data based on actual node} */
-  void HDI calculate_backward(tasks_node_t& prev, [[maybe_unused]] f_t dummy = 0.) const noexcept
+  template <bool is_device = true>
+  void HDI calculate_backward(
+    tasks_node_t& prev,
+    [[maybe_unused]] f_t dummy,
+    [[maybe_unused]] const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
     prev.tasks_backward = tasks_backward + 1;
   }

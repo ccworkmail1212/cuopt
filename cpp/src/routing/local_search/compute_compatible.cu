@@ -47,13 +47,17 @@ DI bool check_route_possible_for_given_vehicle(
   auto second_node = create_node<i_t, f_t, REQUEST>(problem, i1_info, i1_info);
   if (is_problem_run) {
     first_node.time_dim.calculate_forward(
-      second_node.time_dim, get_transit_time(start_depot_info, i1_info, vehicle_info, true));
+      second_node.time_dim,
+      get_transit_time(start_depot_info, i1_info, vehicle_info, true),
+      vehicle_info);
   } else {
     auto [route_id, intra_idx] = sol.route_node_map.get_route_id_and_intra_idx(i1);
     // intra_idx -1 comes from prize collection
     if (intra_idx == -1) {
       first_node.time_dim.calculate_forward(
-        second_node.time_dim, get_transit_time(start_depot_info, i1_info, vehicle_info, true));
+        second_node.time_dim,
+        get_transit_time(start_depot_info, i1_info, vehicle_info, true),
+        vehicle_info);
     } else {
       second_node = sol.routes[route_id].get_node(intra_idx);
     }
@@ -61,13 +65,15 @@ DI bool check_route_possible_for_given_vehicle(
 
   first_node = create_node<i_t, f_t, REQUEST>(problem, i2_info, i2_info);
 
-  second_node.time_dim.calculate_forward(first_node.time_dim,
-                                         get_transit_time(i1_info, i2_info, vehicle_info, true));
+  second_node.time_dim.calculate_forward(
+    first_node.time_dim, get_transit_time(i1_info, i2_info, vehicle_info, true), vehicle_info);
 
   second_node =
     create_depot_node<i_t, f_t, REQUEST>(problem, return_depot_info, return_depot_info, vehicle_id);
   first_node.time_dim.calculate_forward(
-    second_node.time_dim, get_transit_time(i2_info, return_depot_info, vehicle_info, true));
+    second_node.time_dim,
+    get_transit_time(i2_info, return_depot_info, vehicle_info, true),
+    vehicle_info);
 
   return second_node.time_dim.forward_feasible(VehicleInfo<f_t>());
 }
@@ -118,34 +124,40 @@ DI bool check_route_possible_for_given_vehicle(
   auto second_node = create_node<i_t, f_t, REQUEST>(problem, i1_info, i1_brother_info);
   if (is_problem_run) {
     first_node.time_dim.calculate_forward(
-      second_node.time_dim, get_transit_time(start_depot_info, i1_info, vehicle_info, true));
+      second_node.time_dim,
+      get_transit_time(start_depot_info, i1_info, vehicle_info, true),
+      vehicle_info);
   } else {
     auto [route_id, intra_idx] = sol.route_node_map.get_route_id_and_intra_idx(i1);
     // intra_idx -1 comes from prize collection
     if (intra_idx == -1) {
       first_node.time_dim.calculate_forward(
-        second_node.time_dim, get_transit_time(start_depot_info, i1_info, vehicle_info, true));
+        second_node.time_dim,
+        get_transit_time(start_depot_info, i1_info, vehicle_info, true),
+        vehicle_info);
     } else {
       second_node = sol.routes[route_id].get_node(intra_idx);
     }
   }
 
   first_node = create_node<i_t, f_t, REQUEST>(problem, i2_info, i2_brother_info);
-  second_node.time_dim.calculate_forward(first_node.time_dim,
-                                         get_transit_time(i1_info, i2_info, vehicle_info, true));
+  second_node.time_dim.calculate_forward(
+    first_node.time_dim, get_transit_time(i1_info, i2_info, vehicle_info, true), vehicle_info);
 
   second_node = create_node<i_t, f_t, REQUEST>(problem, i3_info, i3_brother_info);
-  first_node.time_dim.calculate_forward(second_node.time_dim,
-                                        get_transit_time(i2_info, i3_info, vehicle_info, true));
+  first_node.time_dim.calculate_forward(
+    second_node.time_dim, get_transit_time(i2_info, i3_info, vehicle_info, true), vehicle_info);
 
   first_node = create_node<i_t, f_t, REQUEST>(problem, i4_info, i4_brother_info);
-  second_node.time_dim.calculate_forward(first_node.time_dim,
-                                         get_transit_time(i3_info, i4_info, vehicle_info, true));
+  second_node.time_dim.calculate_forward(
+    first_node.time_dim, get_transit_time(i3_info, i4_info, vehicle_info, true), vehicle_info);
 
   second_node =
     create_depot_node<i_t, f_t, REQUEST>(problem, return_depot_info, start_depot_info, vehicle_id);
   first_node.time_dim.calculate_forward(
-    second_node.time_dim, get_transit_time(i4_info, return_depot_info, vehicle_info, true));
+    second_node.time_dim,
+    get_transit_time(i4_info, return_depot_info, vehicle_info, true),
+    vehicle_info);
 
   return second_node.time_dim.forward_feasible(VehicleInfo<f_t>());
 }

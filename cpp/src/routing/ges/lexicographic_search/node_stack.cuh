@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -416,7 +416,8 @@ struct node_stack_t {
     loop_over_dimensions(dim_info(), [&] __device__(auto I) {
       if (get_dimension_of<I>(dim_info()).has_constraints()) {
         auto dim_between = get_dim_between<I>(from_idx, to_idx);
-        get_dimension_of<I>(d_node).calculate_forward(get_dimension_of<I>(node), dim_between);
+        get_dimension_of<I>(d_node).calculate_forward(
+          get_dimension_of<I>(node), dim_between, s_route.vehicle_info());
       }
     });
   }
@@ -458,8 +459,8 @@ struct node_stack_t {
     loop_over_dimensions(dim_info(), [&] __device__(auto I) {
       if (get_dimension_of<I>(dim_info()).has_constraints()) {
         auto dim_to_delivery = get_dim_to_delivery<I>(idx);
-        get_dimension_of<I>(node).calculate_forward(get_dimension_of<I>(delivery_node),
-                                                    dim_to_delivery);
+        get_dimension_of<I>(node).calculate_forward(
+          get_dimension_of<I>(delivery_node), dim_to_delivery, s_route.vehicle_info());
       }
     });
   }
@@ -482,7 +483,7 @@ struct node_stack_t {
       if (get_dimension_of<I>(dim_info()).has_constraints()) {
         auto dim_from_delivery = get_dim_from_delivery<I>(idx);
         get_dimension_of<I>(delivery_node)
-          .calculate_forward(get_dimension_of<I>(node), dim_from_delivery);
+          .calculate_forward(get_dimension_of<I>(node), dim_from_delivery, s_route.vehicle_info());
       }
     });
   }
@@ -696,7 +697,8 @@ struct node_stack_t {
           if (get_dimension_of<I>(beginning_of_hole.dimensions_info).has_constraints()) {
             auto dim_between = get_dim_between<I>(i - size_of_hole, i + 1);
             get_dimension_of<I>(beginning_of_hole)
-              .calculate_forward(get_dimension_of<I>(next_node), dim_between);
+              .calculate_forward(
+                get_dimension_of<I>(next_node), dim_between, s_route.vehicle_info());
           }
         });
 
@@ -725,8 +727,8 @@ struct node_stack_t {
         loop_over_dimensions(iter_node.dimensions_info, [&] __device__(auto I) {
           if (get_dimension_of<I>(iter_node.dimensions_info).has_constraints()) {
             auto dim_between = get_dim_between<I>(i, i + 1);
-            get_dimension_of<I>(iter_node).calculate_forward(get_dimension_of<I>(next_node),
-                                                             dim_between);
+            get_dimension_of<I>(iter_node).calculate_forward(
+              get_dimension_of<I>(next_node), dim_between, s_route.vehicle_info());
           }
         });
         if (!advance) {
@@ -799,7 +801,8 @@ struct node_stack_t {
               if (get_dimension_of<I>(beginning_of_hole.dimensions_info).has_constraints()) {
                 auto dim_between = get_dim_from_delivery<I>(i + 1);
                 get_dimension_of<I>(beginning_of_hole)
-                  .calculate_forward(get_dimension_of<I>(next_node), dim_between);
+                  .calculate_forward(
+                    get_dimension_of<I>(next_node), dim_between, s_route.vehicle_info());
               }
             });
           } else {
@@ -809,7 +812,8 @@ struct node_stack_t {
               if (get_dimension_of<I>(beginning_of_hole.dimensions_info).has_constraints()) {
                 auto dim_between = get_dim_between<I>(i - size_of_hole, i + 1);
                 get_dimension_of<I>(beginning_of_hole)
-                  .calculate_forward(get_dimension_of<I>(next_node), dim_between);
+                  .calculate_forward(
+                    get_dimension_of<I>(next_node), dim_between, s_route.vehicle_info());
               }
             });
           }
@@ -840,8 +844,8 @@ struct node_stack_t {
         loop_over_dimensions(iter_node.dimensions_info, [&] __device__(auto I) {
           if (get_dimension_of<I>(iter_node.dimensions_info).has_constraints()) {
             auto dim_between = get_dim_between<I>(i, i + 1);
-            get_dimension_of<I>(iter_node).calculate_forward(get_dimension_of<I>(next_node),
-                                                             dim_between);
+            get_dimension_of<I>(iter_node).calculate_forward(
+              get_dimension_of<I>(next_node), dim_between, s_route.vehicle_info());
           }
         });
         if (!advance) {

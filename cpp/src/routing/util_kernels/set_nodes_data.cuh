@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -56,6 +56,17 @@ __device__ void set_route_data(typename problem_t<i_t, f_t>::view_t const& probl
     }
     route.template get_dim<dim_t::DIST>().distance_backward[n_nodes_route] = 0.f;
     route.template get_dim<dim_t::DIST>().distance_forward[0]              = 0.f;
+    if (problem.dimensions_info.has_dimension(dim_t::LOT_SCHEDULE)) {
+      auto& ls                         = route.template get_dim<dim_t::LOT_SCHEDULE>();
+      ls.fwd_completion[0]             = earliest;
+      ls.fwd_wct[0]                    = 0.;
+      ls.bwd_weight_sum[n_nodes_route] = 0.;
+      ls.bwd_wct_rel[n_nodes_route]    = 0.;
+      ls.lot_weight[0]                 = 0.;
+      ls.node_id[0]                    = -1;
+      ls.lot_weight[n_nodes_route]     = 0.;
+      ls.node_id[n_nodes_route]        = -1;
+    }
     if (problem.dimensions_info.has_dimension(dim_t::CAP)) {
       route.template get_dim<dim_t::CAP>().max_to_node[0]           = 0;
       route.template get_dim<dim_t::CAP>().gathered[0]              = 0;

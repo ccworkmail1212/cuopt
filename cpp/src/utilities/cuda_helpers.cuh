@@ -9,6 +9,8 @@
 
 #include <utilities/macros.cuh>
 
+#include <cstdint>
+
 #include <thrust/host_vector.h>
 #include <thrust/tuple.h>
 #include <mutex>
@@ -157,15 +159,27 @@ i_t next_pow2(i_t val)
   return 1 << (raft::log2(val) + 1);
 }
 
-// FIXME:: handle alignment when dealing with different sized precisions
+static DI std::uintptr_t shmem_align_address_up(std::uintptr_t addr, std::uintptr_t alignment)
+{
+  return (addr + alignment - 1u) & ~(alignment - 1u);
+}
+
+// Bump-pointer sub-allocator for dynamic shared memory: each segment starts and ends on an 8-byte
+// boundary so mixed float/int/double layouts stay valid. Callers sizing shmem should reserve slack
+// (e.g. align totals to 8 or add ~7 bytes per segment) if buffers are tightly packed.
 template <typename T, typename i_t>
 static DI thrust::tuple<raft::device_span<T>, i_t*> wrap_ptr_as_span(i_t* shmem, size_t sz)
 {
-  T* sh_ptr = (T*)shmem;
+  constexpr std::uintptr_t k_align = 8;
+
+  std::uintptr_t base = shmem_align_address_up(
+    reinterpret_cast<std::uintptr_t>(reinterpret_cast<void*>(shmem)), k_align);
+  T* sh_ptr = reinterpret_cast<T*>(base);
   auto s    = raft::device_span<T>{sh_ptr, sz};
 
-  sh_ptr = sh_ptr + sz;
-  return thrust::make_tuple(s, (i_t*)sh_ptr);
+  std::uintptr_t end = reinterpret_cast<std::uintptr_t>(reinterpret_cast<void*>(sh_ptr + sz));
+  end                = shmem_align_address_up(end, k_align);
+  return thrust::make_tuple(s, reinterpret_cast<i_t*>(end));
 }
 
 template <class To, class From>

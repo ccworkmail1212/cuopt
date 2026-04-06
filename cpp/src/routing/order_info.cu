@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -233,6 +233,11 @@ void populate_order_info(data_model_view_t<i_t, f_t> const& data_model,
   }
 
   populate_time_windows(data_model, order_info_);
+
+  if (auto lot_weights = data_model.get_order_lot_weights(); lot_weights.size() > 0) {
+    order_info_.v_lot_weights_.resize(norders, stream_view);
+    raft::copy(order_info_.v_lot_weights_.data(), lot_weights.data(), norders, stream);
+  }
 }
 
 template void populate_order_info(data_model_view_t<int, float> const& data_model,

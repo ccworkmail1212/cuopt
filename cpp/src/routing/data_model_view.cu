@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -679,6 +679,18 @@ template <typename i_t, typename f_t>
 raft::device_span<f_t const> data_model_view_t<i_t, f_t>::get_order_prizes() const noexcept
 {
   return order_prizes_;
+}
+
+template <typename i_t, typename f_t>
+void data_model_view_t<i_t, f_t>::set_order_lot_weights(double const* lot_weights)
+{
+  order_lot_weights_ = raft::device_span<double const>(lot_weights, num_orders_);
+}
+
+template <typename i_t, typename f_t>
+raft::device_span<double const> data_model_view_t<i_t, f_t>::get_order_lot_weights() const noexcept
+{
+  return order_lot_weights_;
 }
 
 template <typename i_t, typename f_t>
