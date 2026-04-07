@@ -349,13 +349,16 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
     }
   }
 
-  // LOT_SCHEDULE dimension info (lot scheduling WCT objective)
+  // LOT_SCHEDULE dimension info (lot scheduling WCT objective + optional qtime constraint)
   if (!order_info.v_lot_weights_.is_empty()) {
     dimensions_info.enable_dimension(dim_t::LOT_SCHEDULE);
     double wct_weight = specified_weights.count(objective_t::WEIGHTED_COMPLETION_TIME)
                           ? specified_weights.at(objective_t::WEIGHTED_COMPLETION_TIME)
                           : 1.0;
     dimensions_info.enable_objective(objective_t::WEIGHTED_COMPLETION_TIME, wct_weight);
+    if (!order_info.v_lot_max_qtimes_.is_empty()) {
+      dimensions_info.template get_dimension<dim_t::LOT_SCHEDULE>().has_qtime = true;
+    }
   }
 
   if (data_view_ptr->get_fleet_size() == 1) {

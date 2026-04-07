@@ -238,6 +238,11 @@ void populate_order_info(data_model_view_t<i_t, f_t> const& data_model,
     order_info_.v_lot_weights_.resize(norders, stream_view);
     raft::copy(order_info_.v_lot_weights_.data(), lot_weights.data(), norders, stream);
   }
+
+  if (auto max_qtimes = data_model.get_order_max_qtimes(); max_qtimes.size() > 0) {
+    order_info_.v_lot_max_qtimes_.resize(norders, stream_view);
+    raft::copy(order_info_.v_lot_max_qtimes_.data(), max_qtimes.data(), norders, stream);
+  }
 }
 
 template void populate_order_info(data_model_view_t<int, float> const& data_model,

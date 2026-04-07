@@ -96,6 +96,8 @@ DI node_t<i_t, f_t, REQUEST> create_node(const typename problem_t<i_t, f_t>::vie
       !problem.order_info.lot_weights.empty()) {
     node.lot_schedule_dim.lot_weight = problem.order_info.lot_weights[node_idx];
     node.lot_schedule_dim.node_id    = node_idx;
+    node.lot_schedule_dim.max_qtime =
+      !problem.order_info.lot_max_qtimes.empty() ? problem.order_info.lot_max_qtimes[node_idx] : 0.;
   }
 
   node.request = request_info_t<i_t, REQUEST>(node_info, brother_info);
@@ -170,6 +172,9 @@ constexpr node_t<i_t, f_t, REQUEST> create_node(const problem_t<i_t, f_t>* probl
       !problem->order_info_h.lot_weights.empty()) {
     node.lot_schedule_dim.lot_weight = problem->order_info_h.lot_weights[node_idx];
     node.lot_schedule_dim.node_id    = node_idx;
+    node.lot_schedule_dim.max_qtime  = !problem->order_info_h.lot_max_qtimes.empty()
+                                         ? problem->order_info_h.lot_max_qtimes[node_idx]
+                                         : 0.;
   }
 
   node.request = request_info_t<i_t, REQUEST>(node_info, brother_info);

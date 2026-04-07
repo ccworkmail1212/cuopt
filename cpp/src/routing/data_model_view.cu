@@ -694,6 +694,18 @@ raft::device_span<double const> data_model_view_t<i_t, f_t>::get_order_lot_weigh
 }
 
 template <typename i_t, typename f_t>
+void data_model_view_t<i_t, f_t>::set_order_max_qtimes(double const* max_qtimes)
+{
+  order_max_qtimes_ = raft::device_span<double const>(max_qtimes, num_orders_);
+}
+
+template <typename i_t, typename f_t>
+raft::device_span<double const> data_model_view_t<i_t, f_t>::get_order_max_qtimes() const noexcept
+{
+  return order_max_qtimes_;
+}
+
+template <typename i_t, typename f_t>
 i_t data_model_view_t<i_t, f_t>::get_min_vehicles() const noexcept
 {
   return min_num_vehicles_;

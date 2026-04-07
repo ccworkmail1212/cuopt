@@ -50,9 +50,11 @@ assignment_t<i_t> ges_solver_t<i_t, f_t, REQUEST>::compute_ges_solution(
                 error_type_t::ValidationError,
                 "Route count cannot be bigger than number vehicles");
 
-  // Weights for dimensions that do not have any constraints don't matter
+  // Weights for dimensions that do not have any constraints don't matter.
+  // LOT_SCHEDULE uses 10000 when qtime constraints are enabled; the weight is
+  // harmless when qtime is not used (infeasibility stays 0).
   const double initial_weights[] = {
-    10000., 10000., 100., 1000., 1000., 1000., 10000., 10000., 10000., 1.};
+    10000., 10000., 100., 1000., 1000., 1000., 10000., 10000., 10000., 10000.};
   detail::infeasible_cost_t weights(initial_weights);
   auto cpu_weights = detail::get_cpu_cost(weights);
   solve<detail::pool_allocator_t<i_t,

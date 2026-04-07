@@ -229,7 +229,8 @@ struct vehicle_fixed_cost_dimension_info_t {
 };
 
 struct lot_schedule_dimension_info_t {
-  constexpr bool has_constraints() const { return false; }
+  bool has_qtime = false;
+  HDI bool has_constraints() const { return has_qtime; }
 };
 
 /**

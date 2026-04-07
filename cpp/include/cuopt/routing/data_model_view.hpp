@@ -578,6 +578,21 @@ class data_model_view_t {
   raft::device_span<double const> get_order_lot_weights() const noexcept;
 
   /**
+   * @brief Set per-lot maximum queue time (qtime) constraint.
+   *        Each lot must begin processing within max_qtime[k] of t=0.
+   *        Violation is treated as infeasibility: penalty = max(0, start_k - max_qtime_k).
+   *
+   * @param[in] max_qtimes Per-order qtime deadline array (double, size = num_orders)
+   */
+  void set_order_max_qtimes(double const* max_qtimes);
+
+  /**
+   * @brief Get per-lot max qtimes set via set_order_max_qtimes
+   * @return raft::device_span<double const>
+   */
+  raft::device_span<double const> get_order_max_qtimes() const noexcept;
+
+  /**
    * @brief Get pickup delivery pairs
    * @return Pair of pointers containing pick up and delivery indices
    */
@@ -641,6 +656,7 @@ class data_model_view_t {
 
   raft::device_span<f_t const> order_prizes_;
   raft::device_span<double const> order_lot_weights_;
+  raft::device_span<double const> order_max_qtimes_;
 
   i_t const* start_locations_{nullptr};
   i_t const* return_locations_{nullptr};
