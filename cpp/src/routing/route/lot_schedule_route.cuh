@@ -31,6 +31,7 @@ class lot_schedule_route_t {
     : dim_info(dim_info_),
       lot_weight(0, sol_handle_->get_stream()),
       node_id(0, sol_handle_->get_stream()),
+      earliest_time(0, sol_handle_->get_stream()),
       max_qtime(0, sol_handle_->get_stream()),
       fwd_completion(0, sol_handle_->get_stream()),
       fwd_wct(0, sol_handle_->get_stream()),
@@ -49,6 +50,7 @@ class lot_schedule_route_t {
     : dim_info(other.dim_info),
       lot_weight(other.lot_weight, sol_handle_->get_stream()),
       node_id(other.node_id, sol_handle_->get_stream()),
+      earliest_time(other.earliest_time, sol_handle_->get_stream()),
       max_qtime(other.max_qtime, sol_handle_->get_stream()),
       fwd_completion(other.fwd_completion, sol_handle_->get_stream()),
       fwd_wct(other.fwd_wct, sol_handle_->get_stream()),
@@ -68,6 +70,7 @@ class lot_schedule_route_t {
   {
     lot_weight.resize(max_nodes_per_route, stream);
     node_id.resize(max_nodes_per_route, stream);
+    earliest_time.resize(max_nodes_per_route, stream);
     max_qtime.resize(max_nodes_per_route, stream);
     fwd_completion.resize(max_nodes_per_route, stream);
     fwd_wct.resize(max_nodes_per_route, stream);
@@ -88,6 +91,7 @@ class lot_schedule_route_t {
       lot_schedule_node_t<i_t, f_t> node;
       node.lot_weight       = lot_weight[idx];
       node.node_id          = node_id[idx];
+      node.earliest_time    = earliest_time[idx];
       node.max_qtime        = max_qtime[idx];
       node.fwd_completion   = fwd_completion[idx];
       node.fwd_wct          = fwd_wct[idx];
@@ -102,9 +106,10 @@ class lot_schedule_route_t {
 
     DI void set_node(i_t idx, const lot_schedule_node_t<i_t, f_t>& node)
     {
-      lot_weight[idx] = node.lot_weight;
-      node_id[idx]    = node.node_id;
-      max_qtime[idx]  = node.max_qtime;
+      lot_weight[idx]    = node.lot_weight;
+      node_id[idx]       = node.node_id;
+      earliest_time[idx] = node.earliest_time;
+      max_qtime[idx]     = node.max_qtime;
       set_forward_data(idx, node);
       set_backward_data(idx, node);
     }
@@ -150,6 +155,7 @@ class lot_schedule_route_t {
       i_t size = end_idx - start_idx;
       block_copy(lot_weight.subspan(write_start), orig.lot_weight.subspan(start_idx), size);
       block_copy(node_id.subspan(write_start), orig.node_id.subspan(start_idx), size);
+      block_copy(earliest_time.subspan(write_start), orig.earliest_time.subspan(start_idx), size);
       block_copy(max_qtime.subspan(write_start), orig.max_qtime.subspan(start_idx), size);
     }
 
@@ -171,12 +177,14 @@ class lot_schedule_route_t {
       view_t v;
       v.dim_info = dim_info_;
       // Layout (all double except node_id which is i_t):
-      //   lot_weight | max_qtime | fwd_completion | fwd_wct | bwd_weight_sum | bwd_wct_rel
+      //   lot_weight | earliest_time | max_qtime | fwd_completion | fwd_wct
+      //   | bwd_weight_sum | bwd_wct_rel
       //   | fwd_qtime_dep | fwd_qtime_excess | bwd_qtime_dep | bwd_qtime_excess
       //   | node_id
       i_t stride                              = n_nodes_route + 1;
       i_t* sh_ptr                             = shmem;
       thrust::tie(v.lot_weight, sh_ptr)       = wrap_ptr_as_span<double>(sh_ptr, stride);
+      thrust::tie(v.earliest_time, sh_ptr)    = wrap_ptr_as_span<double>(sh_ptr, stride);
       thrust::tie(v.max_qtime, sh_ptr)        = wrap_ptr_as_span<double>(sh_ptr, stride);
       thrust::tie(v.fwd_completion, sh_ptr)   = wrap_ptr_as_span<double>(sh_ptr, stride);
       thrust::tie(v.fwd_wct, sh_ptr)          = wrap_ptr_as_span<double>(sh_ptr, stride);
@@ -193,6 +201,7 @@ class lot_schedule_route_t {
     lot_schedule_dimension_info_t dim_info;
     raft::device_span<double> lot_weight;
     raft::device_span<i_t> node_id;
+    raft::device_span<double> earliest_time;
     raft::device_span<double> max_qtime;
     raft::device_span<double> fwd_completion;
     raft::device_span<double> fwd_wct;
@@ -211,6 +220,7 @@ class lot_schedule_route_t {
     v.dim_info       = dim_info;
     v.lot_weight     = raft::device_span<double>{lot_weight.data(), lot_weight.size()};
     v.node_id        = raft::device_span<i_t>{node_id.data(), node_id.size()};
+    v.earliest_time  = raft::device_span<double>{earliest_time.data(), earliest_time.size()};
     v.max_qtime      = raft::device_span<double>{max_qtime.data(), max_qtime.size()};
     v.fwd_completion = raft::device_span<double>{fwd_completion.data(), fwd_completion.size()};
     v.fwd_wct        = raft::device_span<double>{fwd_wct.data(), fwd_wct.size()};
@@ -228,14 +238,15 @@ class lot_schedule_route_t {
   HDI static size_t get_shared_size(i_t route_size,
                                     [[maybe_unused]] lot_schedule_dimension_info_t dim_info_)
   {
-    // 10 double arrays + 1 i_t array, each of size route_size + 1
-    return 10 * (route_size + 1) * sizeof(double) + (route_size + 1) * sizeof(i_t);
+    // 11 double arrays + 1 i_t array, each of size route_size + 1
+    return 11 * (route_size + 1) * sizeof(double) + (route_size + 1) * sizeof(i_t);
   }
 
   lot_schedule_dimension_info_t dim_info;
 
   rmm::device_uvector<double> lot_weight;
   rmm::device_uvector<i_t> node_id;
+  rmm::device_uvector<double> earliest_time;
   rmm::device_uvector<double> max_qtime;
   rmm::device_uvector<double> fwd_completion;
   rmm::device_uvector<double> fwd_wct;

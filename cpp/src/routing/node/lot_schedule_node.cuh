@@ -27,9 +27,15 @@ namespace detail {
  * WCT = sum_k ( lot_weight[k] * completion_time[k] )
  * where completion_time[k] = time when the tool finishes processing lot k.
  *
- * Forward WCT state propagates completion times and accumulates WCT.
- * Backward WCT state accumulates weight sums and relative WCT so that
- * combine() is O(1) at any split point.
+ * Forward state:
+ *   actual_start[k] = max(arrival_at_k, earliest_time[k])
+ *   fwd_completion[k] = actual_start[k] + service_time[k]
+ *   fwd_wct[k]        = fwd_wct[k-1] + lot_weight[k] * fwd_completion[k]
+ *   fwd_qtime_dep[k]  = actual_start[k]   (tracks actual start for qtime checking)
+ *
+ * Backward WCT state accumulates weight sums and relative WCT (assuming zero
+ * waiting due to earliest_time) so that combine() is O(1) at any split point.
+ * The approximation is exact when no earliest_time waits occur in the suffix.
  *
  * Qtime constraint: lot k must START processing by max_qtime[k] (relative to t=0).
  * Violation = max(0, actual_start_k - max_qtime_k). Modelled using warping
@@ -48,11 +54,13 @@ class lot_schedule_node_t {
   double lot_weight = 0.0;  //! Importance weight of this lot; 0 for depot nodes
   i_t node_id       = -1;   //! Order index into vehicle_info.order_service_times; -1 for depots
 
+  //! Earliest allowable start time (lot arrival time). 0 = no constraint.
+  double earliest_time = 0.0;
   //! Qtime deadline: lot must start processing by this time (t=0 reference). 0 = no constraint.
   double max_qtime = 0.0;
 
   // ---- Forward WCT state ----
-  //! Completion time of this lot = time tool finishes processing it
+  //! Completion time of this lot = actual_start + service_time
   double fwd_completion = 0.0;
   //! Accumulated WCT: sum_{i=0}^{k} lot_weight[i] * completion[i]
   double fwd_wct = 0.0;
@@ -60,11 +68,11 @@ class lot_schedule_node_t {
   // ---- Backward WCT state ----
   //! Sum of lot_weights from this position to end of route
   double bwd_weight_sum = 0.0;
-  //! Relative WCT of suffix [k..n] assuming handoff time = 0
+  //! Relative WCT of suffix [k..n] assuming handoff time = 0 and no earliest_time waits
   double bwd_wct_rel = 0.0;
 
   // ---- Forward qtime state ----
-  //! Warped START time at this lot (clamped to max_qtime from above when violated)
+  //! Actual START time at this lot: max(arrival, earliest_time)
   double fwd_qtime_dep = 0.0;
   //! Cumulative qtime violations up to and including this lot
   double fwd_qtime_excess = 0.0;
@@ -82,33 +90,36 @@ class lot_schedule_node_t {
   // Called as:  this.calculate_forward(next, travel_time, vehicle_info)
   // arc = travel_time(this -> next)
   // Service time of `next` is fetched from vehicle_info.
+  //
+  // actual_start_next = max(fwd_qtime_dep[this] + service[this] + travel, earliest_time[next])
+  // fwd_completion[next] = actual_start_next + service_time[next]
+  // fwd_wct[next]        = fwd_wct[this] + lot_weight[next] * fwd_completion[next]
+  // fwd_qtime_dep[next]  = actual_start_next
   // -----------------------------------------------------------------------
   template <bool is_device = true>
   void HDI calculate_forward(lot_schedule_node_t& next,
                              double travel_time,
                              const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
-    // --- WCT forward ---
     double service_time_next =
       (next.node_id >= 0 && !vehicle_info.order_service_times.empty())
         ? static_cast<double>(vehicle_info.order_service_times[next.node_id])
         : 0.;
-    next.fwd_completion = fwd_completion + travel_time + service_time_next;
-    next.fwd_wct        = fwd_wct + next.lot_weight * next.fwd_completion;
-
-    // --- Qtime forward ---
-    // The START time of next = actual start of this + service_time_this + travel_time.
-    // fwd_qtime_dep is the actual (not warped) start time at this node, so:
-    //   arrival_at_next = fwd_qtime_dep + service_time_this + travel_time
     double service_time_this = (node_id >= 0 && !vehicle_info.order_service_times.empty())
                                  ? static_cast<double>(vehicle_info.order_service_times[node_id])
                                  : 0.;
-    // fwd_qtime_dep is the ACTUAL (non-warped) start time.
-    // Lot starts immediately when the tool arrives; no waiting.
-    double arrival     = fwd_qtime_dep + service_time_this + travel_time;
-    next.fwd_qtime_dep = arrival;
+
+    double arrival      = fwd_qtime_dep + service_time_this + travel_time;
+    double actual_start = (next.earliest_time > 0.) ? max(arrival, next.earliest_time) : arrival;
+
+    // --- WCT forward ---
+    next.fwd_completion = actual_start + service_time_next;
+    next.fwd_wct        = fwd_wct + next.lot_weight * next.fwd_completion;
+
+    // --- Qtime forward ---
+    next.fwd_qtime_dep = actual_start;
     next.fwd_qtime_excess =
-      fwd_qtime_excess + (next.max_qtime > 0. ? max(0., arrival - next.max_qtime) : 0.);
+      fwd_qtime_excess + (next.max_qtime > 0. ? max(0., actual_start - next.max_qtime) : 0.);
   }
 
   // -----------------------------------------------------------------------
@@ -117,7 +128,8 @@ class lot_schedule_node_t {
   // arc = travel_time(prev -> this)
   // Service time of `prev` is fetched from vehicle_info.
   //
-  // WCT backward recurrence (relative to a hypothetical handoff time of 0):
+  // WCT backward recurrence (relative to a hypothetical handoff time of 0,
+  // ignoring earliest_time waits — same approximation as TIME dimension):
   //   prev.bwd_weight_sum = prev.lot_weight + this.bwd_weight_sum
   //   prev.bwd_wct_rel    = prev.bwd_weight_sum * service_time[prev]
   //                       + this.bwd_wct_rel
@@ -154,8 +166,9 @@ class lot_schedule_node_t {
   // Returns infeasibility delta at the join point (prev, next) with arc travel_time.
   // WCT is a pure objective — no infeasibility contribution.
   // Qtime infeasibility:
-  //   actual_start_next = fwd_qtime_dep[prev] + service_time[prev] + travel_time
-  //   excess = fwd_excess[prev] + max(0, actual_start_next - bwd_dep[next])
+  //   arrival        = fwd_qtime_dep[prev] + service_time[prev] + travel_time
+  //   actual_start   = max(arrival, earliest_time[next])
+  //   excess         = fwd_excess[prev] + max(0, actual_start - bwd_dep[next])
   // bwd_qtime_excess is always 0 (one-sided constraint).
   // -----------------------------------------------------------------------
   static HDI double combine(const lot_schedule_node_t& prev,
@@ -167,8 +180,9 @@ class lot_schedule_node_t {
       (prev.node_id >= 0 && !vehicle_info.order_service_times.empty())
         ? static_cast<double>(vehicle_info.order_service_times[prev.node_id])
         : 0.;
-    double arrival = prev.fwd_qtime_dep + service_time_prev + travel_time;
-    return prev.fwd_qtime_excess + max(0., arrival - next.bwd_qtime_dep);
+    double arrival      = prev.fwd_qtime_dep + service_time_prev + travel_time;
+    double actual_start = (next.earliest_time > 0.) ? max(arrival, next.earliest_time) : arrival;
+    return prev.fwd_qtime_excess + max(0., actual_start - next.bwd_qtime_dep);
   }
 
   // -----------------------------------------------------------------------
@@ -203,8 +217,7 @@ class lot_schedule_node_t {
   // Called with prev_node = node[k-1] (fwd already propagated into `this`).
   //
   // WCT: the combine invariant gives total WCT at split point k-1 → k:
-  //   handoff_time = prev.fwd_completion + travel(k-1, k)
-  //               = this.fwd_completion - service_time[this]
+  //   handoff_time = this.fwd_completion - service_time[this]  (= actual_start[this])
   //   total_wct   = prev.fwd_wct
   //               + handoff_time * this.bwd_weight_sum
   //               + this.bwd_wct_rel
@@ -222,7 +235,7 @@ class lot_schedule_node_t {
     double service_time = (node_id >= 0 && !vehicle_info.order_service_times.empty())
                             ? static_cast<double>(vehicle_info.order_service_times[node_id])
                             : 0.;
-    double handoff_time = fwd_completion - service_time;
+    double handoff_time = fwd_completion - service_time;  // = actual_start[this]
     obj_cost[objective_t::WEIGHTED_COMPLETION_TIME] =
       prev_node.fwd_wct + handoff_time * bwd_weight_sum + bwd_wct_rel;
 

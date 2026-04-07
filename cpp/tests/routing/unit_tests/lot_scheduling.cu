@@ -443,6 +443,205 @@ TEST(lot_scheduling, qtime_nontrivial_ten_lots_four_tools)
   EXPECT_NEAR(objectives.at(objective_t::WEIGHTED_COMPLETION_TIME), computed_wct, 1e-3);
 }
 
+/**
+ * TEST 6 — arrival time + qtime: 10 lots / 4 tools with both constraint types
+ *
+ * Builds on TEST 5 (qtime_nontrivial) by adding lot arrival-time constraints.
+ * Same 10-lot / 4-tool setup; same qtime constraints on lot1 and lot5;
+ * additionally:
+ *
+ *   lot4 (w=5, s=2): earliest_time = 4
+ *     Unconstrained optimal schedules lot4 first on its tool (start=1).
+ *     With earliest_time=4 the tool must idle or put a short lot before it.
+ *
+ *   lot2 (w=4, s=1): earliest_time = 3
+ *     Unconstrained optimal schedules lot2 first on its tool (start=1).
+ *     With earliest_time=3 the tool must idle or put a very short lot before it.
+ *
+ * The test verifies:
+ *   1. Solver returns SUCCESS with all lots served.
+ *   2. Every lot with a max_qtime starts within its deadline (start <= max_qtime).
+ *   3. Every lot with an earliest_time starts no earlier than that time
+ *      (start >= earliest_time).
+ *   4. Reported WCT == independently computed WCT (consistency check).
+ */
+TEST(lot_scheduling, arrival_time_nontrivial_ten_lots_four_tools)
+{
+  raft::handle_t handle;
+  auto stream = handle.get_stream();
+
+  const int n_locations = 11;
+  const int n_vehicles  = 4;
+  const int n_orders    = 10;
+
+  std::vector<float> transit_matrix(n_locations * n_locations);
+  std::vector<float> cost_matrix(n_locations * n_locations);
+  for (int i = 0; i < n_locations; i++) {
+    for (int j = 0; j < n_locations; j++) {
+      transit_matrix[i * n_locations + j] = (i == j) ? 0.f : 1.f;
+      cost_matrix[i * n_locations + j]    = (i == j) ? 0.f : 0.001f;
+    }
+  }
+
+  std::vector<int> order_locations = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  std::vector<int> service_times   = {2, 5, 1, 3, 2, 4, 3, 1, 2, 3};
+  std::vector<double> lot_weights  = {3., 1., 4., 2., 5., 1., 3., 2., 4., 2.};
+  // Qtime: same tight deadlines as TEST 5
+  std::vector<double> max_qtimes = {100., 4., 100., 100., 100., 4., 100., 100., 100., 100.};
+  // Arrival times: lot4 arrives at t=4, lot2 arrives at t=3; others immediate.
+  std::vector<int> earliest = {0, 0, 3, 0, 4, 0, 0, 0, 0, 0};
+  std::vector<int> latest = {10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000};
+
+  auto v_cost_matrix         = cuopt::device_copy(cost_matrix, stream);
+  auto v_transit_time_matrix = cuopt::device_copy(transit_matrix, stream);
+  auto v_order_locations     = cuopt::device_copy(order_locations, stream);
+  auto v_service_times       = cuopt::device_copy(service_times, stream);
+  auto v_lot_weights         = cuopt::device_copy(lot_weights, stream);
+  auto v_max_qtimes          = cuopt::device_copy(max_qtimes, stream);
+  auto v_earliest            = cuopt::device_copy(earliest, stream);
+  auto v_latest              = cuopt::device_copy(latest, stream);
+
+  cuopt::routing::data_model_view_t<int, float> data_model(
+    &handle, n_locations, n_vehicles, n_orders);
+  data_model.add_cost_matrix(v_cost_matrix.data());
+  data_model.add_transit_time_matrix(v_transit_time_matrix.data());
+  data_model.set_order_locations(v_order_locations.data());
+  data_model.set_order_service_times(v_service_times.data());
+  data_model.set_order_lot_weights(v_lot_weights.data());
+  data_model.set_order_max_qtimes(v_max_qtimes.data());
+  data_model.set_order_time_windows(v_earliest.data(), v_latest.data());
+  data_model.set_min_vehicles(n_vehicles);
+
+  cuopt::routing::solver_settings_t<int, float> settings;
+  settings.set_time_limit(5);
+
+  auto routing_solution = cuopt::routing::solve(data_model, settings);
+  handle.sync_stream();
+
+  ASSERT_EQ(routing_solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
+
+  auto host_route = cuopt::routing::host_assignment_t(routing_solution);
+  ASSERT_EQ(host_route.unserviced_nodes.size(), 0u);
+
+  // Walk the flat route array: verify both constraint types and compute WCT.
+  std::vector<double> tool_completion(n_vehicles, 0.0);
+  double computed_wct = 0.0;
+
+  printf("[arrival_nontrivial] node_type | truck | order | start | completion\n");
+  for (int i = 0; i < static_cast<int>(host_route.route.size()); i++) {
+    if (host_route.node_types[i] == 0) {
+      printf("[arrival_nontrivial]  depot     | v%d\n", host_route.truck_id[i]);
+      continue;
+    }
+    int order_id      = host_route.route[i];
+    int v             = host_route.truck_id[i];
+    double start      = std::max(tool_completion[v] + 1.0, static_cast<double>(earliest[order_id]));
+    double completion = start + service_times[order_id];
+    computed_wct += lot_weights[order_id] * completion;
+    tool_completion[v] = completion;
+
+    printf("[arrival_nontrivial]  service   | v%d    | lot%-2d | %5.1f | %10.1f\n",
+           v,
+           order_id,
+           start,
+           completion);
+
+    if (max_qtimes[order_id] < 100.) {
+      EXPECT_LE(start, max_qtimes[order_id]) << "lot" << order_id << " violates max_qtime";
+    }
+    if (earliest[order_id] > 0) {
+      EXPECT_GE(start, static_cast<double>(earliest[order_id]))
+        << "lot" << order_id << " starts before its arrival time";
+    }
+  }
+
+  printf("[arrival_nontrivial] computed_wct = %.2f\n", computed_wct);
+
+  const auto& objectives = routing_solution.get_objectives();
+  ASSERT_TRUE(objectives.count(objective_t::WEIGHTED_COMPLETION_TIME) > 0);
+  printf("[arrival_nontrivial] solver WCT   = %.2f\n",
+         objectives.at(objective_t::WEIGHTED_COMPLETION_TIME));
+  EXPECT_NEAR(objectives.at(objective_t::WEIGHTED_COMPLETION_TIME), computed_wct, 1e-3);
+}
+
+/**
+ * TEST 7 — arrival time: late lot arrival flips optimal ordering
+ *
+ * Same 2-lot setup (k_transit_times), service_times={1,1}, weights={2,1}.
+ *
+ * Without arrival constraints:
+ *   Route A (lot_0 first):  C_0=1+1=2, C_1=2+2+1=5, WCT = 2*2 + 1*5 = 9   <-- optimal
+ *
+ *   Wait, using service=1:
+ *   Route A: C_0 = t(0→1) + s_0 = 1+1 = 2
+ *            C_1 = C_0 + t(1→2) + s_1 = 2+2+1 = 5    WCT = 2*2+1*5 = 9
+ *   Route B: C_1 = t(0→2) + s_1 = 3+1 = 4
+ *            C_0 = C_1 + t(2→1) + s_0 = 4+2+1 = 7    WCT = 1*4+2*7 = 18
+ *   → Route A is optimal (WCT=9).
+ *
+ * With lot_0 earliest_time = 7 (lot_0 physically arrives at t=7):
+ *   Route A (lot_0 first):
+ *     start(lot_0) = max(1, 7) = 7  [waits for lot_0 to arrive]
+ *     C_0 = 7+1 = 8
+ *     start(lot_1) = max(8+2, 0) = 10
+ *     C_1 = 10+1 = 11    WCT = 2*8 + 1*11 = 27
+ *   Route B (lot_1 first):
+ *     start(lot_1) = max(3, 0) = 3
+ *     C_1 = 3+1 = 4
+ *     start(lot_0) = max(4+2, 7) = max(6, 7) = 7   [lot_0 arrives exactly at t=7]
+ *     C_0 = 7+1 = 8    WCT = 1*4 + 2*8 = 20        <-- optimal
+ *
+ * The solver must pick Route B; WCT = 20.
+ * lot_0 arrives (via order_time_windows earliest) at t=7.
+ * latest is set large so TIME-dimension upper-bound never binds.
+ */
+TEST(lot_scheduling, arrival_time_flips_order)
+{
+  raft::handle_t handle;
+  auto stream = handle.get_stream();
+
+  std::vector<int> order_locations = {1, 2};
+  std::vector<int> service_times   = {1, 1};
+  std::vector<double> lot_weights  = {2.0, 1.0};
+  // lot_0 arrives at t=7; lot_1 arrives immediately (t=0)
+  std::vector<int> earliest = {7, 0};
+  std::vector<int> latest   = {10000, 10000};  // non-binding upper bound
+
+  auto v_cost_matrix         = cuopt::device_copy(k_cost_matrix, stream);
+  auto v_transit_time_matrix = cuopt::device_copy(k_transit_times, stream);
+  auto v_order_locations     = cuopt::device_copy(order_locations, stream);
+  auto v_service_times       = cuopt::device_copy(service_times, stream);
+  auto v_lot_weights         = cuopt::device_copy(lot_weights, stream);
+  auto v_earliest            = cuopt::device_copy(earliest, stream);
+  auto v_latest              = cuopt::device_copy(latest, stream);
+
+  cuopt::routing::data_model_view_t<int, float> data_model(&handle, 3, 1, 2);
+  data_model.add_cost_matrix(v_cost_matrix.data());
+  data_model.add_transit_time_matrix(v_transit_time_matrix.data());
+  data_model.set_order_locations(v_order_locations.data());
+  data_model.set_order_service_times(v_service_times.data());
+  data_model.set_order_lot_weights(v_lot_weights.data());
+  data_model.set_order_time_windows(v_earliest.data(), v_latest.data());
+
+  cuopt::routing::solver_settings_t<int, float> settings;
+  settings.set_time_limit(3);
+
+  auto routing_solution = cuopt::routing::solve(data_model, settings);
+  handle.sync_stream();
+
+  ASSERT_EQ(routing_solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
+
+  auto host_route = cuopt::routing::host_assignment_t(routing_solution);
+
+  // Route B (lot_1 first) is optimal: WCT = 1*4 + 2*8 = 20
+  EXPECT_EQ(host_route.route[1], 1);  // lot_1 first
+  EXPECT_EQ(host_route.route[2], 0);  // lot_0 second
+
+  const auto& objectives = routing_solution.get_objectives();
+  ASSERT_TRUE(objectives.count(objective_t::WEIGHTED_COMPLETION_TIME) > 0);
+  EXPECT_NEAR(objectives.at(objective_t::WEIGHTED_COMPLETION_TIME), 20.0, 1e-3);
+}
+
 }  // namespace test
 }  // namespace routing
 }  // namespace cuopt
