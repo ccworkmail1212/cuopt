@@ -725,7 +725,145 @@ TEST(lot_scheduling, vehicle_order_cost_steers_tool_assignment)
 }
 
 /**
- * TEST 9 — heavy transit between two lots overrides weight-only priority
+ * TEST 9 — baseline + qtime + arrival time + events (pre-scheduled breaks)
+ *
+ * Builds on TEST 6 (arrival_time_nontrivial_ten_lots_four_tools, WCT=143) by adding
+ * one pre-scheduled event per tool: earliest=latest=10, duration=3 (busy t=10..13).
+ *
+ * Same 11 locations as TEST 3-6 (no extra break location — breaks can occur at any
+ * existing lot location; 0 extra transit for in-place breaks).
+ * Same lot data, qtime constraints (lot1,lot5 max_qtime=4), and arrival constraints
+ * (lot4 earliest=4, lot2 earliest=3) as TEST 6.
+ *
+ * Break at t=10 is chosen so qtime-constrained lots (lot1 finishes ≤t=9, lot5 ≤t=8)
+ * can always be committed before the event fires.  Tools that carry a 3rd lot
+ * (e.g. lot3 normally starting at t=8) must now absorb the break first, pushing
+ * that lot's completion to t≥14 → WCT rises above 143.
+ *
+ * Checks: SUCCESS; all lots served; qtime/arrival constraints still satisfied;
+ * computed WCT matches solver WCT (consistency).
+ */
+TEST(lot_scheduling, ten_lots_four_tools_with_events)
+{
+  raft::handle_t handle;
+  auto stream = handle.get_stream();
+
+  const int n_locations    = 11;  // depot=0, lots=1..10 (no extra break location)
+  const int n_vehicles     = 4;
+  const int n_orders       = 10;
+  const int break_earliest = 10;  // earliest == latest => exact event time
+  const int break_latest   = 10;
+  const int break_duration = 3;  // event t=10..13
+
+  std::vector<float> transit_matrix(n_locations * n_locations);
+  std::vector<float> cost_matrix(n_locations * n_locations);
+  for (int i = 0; i < n_locations; ++i) {
+    for (int j = 0; j < n_locations; ++j) {
+      transit_matrix[i * n_locations + j] = (i == j) ? 0.f : 1.f;
+      cost_matrix[i * n_locations + j]    = (i == j) ? 0.f : 0.001f;
+    }
+  }
+
+  std::vector<int> order_locations = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  std::vector<int> service_times   = {2, 5, 1, 3, 2, 4, 3, 1, 2, 3};
+  std::vector<double> lot_weights  = {3., 1., 4., 2., 5., 1., 3., 2., 4., 2.};
+  // Same qtime and arrival constraints as TEST 6
+  std::vector<double> max_qtimes = {100., 4., 100., 100., 100., 4., 100., 100., 100., 100.};
+  std::vector<int> earliest      = {0, 0, 3, 0, 4, 0, 0, 0, 0, 0};
+  std::vector<int> latest = {10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000};
+
+  // One break per vehicle, exact time t=10, at any of the existing lot locations
+  std::vector<int> break_locations_h = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  std::vector<int> v_e_h(n_vehicles, break_earliest);
+  std::vector<int> v_l_h(n_vehicles, break_latest);
+  std::vector<int> v_d_h(n_vehicles, break_duration);
+
+  auto v_cost_matrix         = cuopt::device_copy(cost_matrix, stream);
+  auto v_transit_time_matrix = cuopt::device_copy(transit_matrix, stream);
+  auto v_order_locations     = cuopt::device_copy(order_locations, stream);
+  auto v_service_times       = cuopt::device_copy(service_times, stream);
+  auto v_lot_weights         = cuopt::device_copy(lot_weights, stream);
+  auto v_max_qtimes          = cuopt::device_copy(max_qtimes, stream);
+  auto v_earliest            = cuopt::device_copy(earliest, stream);
+  auto v_latest              = cuopt::device_copy(latest, stream);
+  auto v_break_locations     = cuopt::device_copy(break_locations_h, stream);
+  auto v_e                   = cuopt::device_copy(v_e_h, stream);
+  auto v_l                   = cuopt::device_copy(v_l_h, stream);
+  auto v_d                   = cuopt::device_copy(v_d_h, stream);
+
+  cuopt::routing::data_model_view_t<int, float> data_model(
+    &handle, n_locations, n_vehicles, n_orders);
+  data_model.add_cost_matrix(v_cost_matrix.data());
+  data_model.add_transit_time_matrix(v_transit_time_matrix.data());
+  data_model.set_order_locations(v_order_locations.data());
+  data_model.set_order_service_times(v_service_times.data());
+  data_model.set_order_lot_weights(v_lot_weights.data());
+  data_model.set_order_max_qtimes(v_max_qtimes.data());
+  data_model.set_order_time_windows(v_earliest.data(), v_latest.data());
+  data_model.set_break_locations(v_break_locations.data(), v_break_locations.size());
+  data_model.add_break_dimension(v_e.data(), v_l.data(), v_d.data());
+  data_model.set_min_vehicles(n_vehicles);
+
+  cuopt::routing::solver_settings_t<int, float> settings;
+  settings.set_time_limit(5);
+
+  auto routing_solution = cuopt::routing::solve(data_model, settings);
+  handle.sync_stream();
+
+  ASSERT_EQ(routing_solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
+
+  auto host_route = cuopt::routing::host_assignment_t(routing_solution);
+  ASSERT_EQ(host_route.unserviced_nodes.size(), 0u);
+
+  // Walk route: track per-vehicle time, handle break nodes (node_type==3)
+  const int k_depot = 0, k_break = 3;
+  std::vector<double> tool_time(n_vehicles, 0.0);
+  double computed_wct = 0.0;
+
+  printf("[with_events] node   | v | order | start | completion\n");
+  for (int i = 0; i < static_cast<int>(host_route.route.size()); i++) {
+    int ntype = host_route.node_types[i];
+    int v     = host_route.truck_id[i];
+    if (ntype == k_depot) {
+      printf("[with_events]  depot  | v%d\n", v);
+      continue;
+    }
+    double arrival = tool_time[v] + 1.0;
+    if (ntype == k_break) {
+      double start = std::max(arrival, static_cast<double>(break_earliest));
+      tool_time[v] = start + break_duration;
+      printf("[with_events]  break  | v%d | start=%.1f end=%.1f\n", v, start, tool_time[v]);
+      continue;
+    }
+    int order_id      = host_route.route[i];
+    double start      = std::max(arrival, static_cast<double>(earliest[order_id]));
+    double completion = start + service_times[order_id];
+    computed_wct += lot_weights[order_id] * completion;
+    tool_time[v] = completion;
+
+    printf(
+      "[with_events]  service| v%d | lot%-2d | %5.1f | %10.1f\n", v, order_id, start, completion);
+
+    if (max_qtimes[order_id] < 100.) {
+      EXPECT_LE(start, max_qtimes[order_id]) << "lot" << order_id << " violates max_qtime";
+    }
+    if (earliest[order_id] > 0) {
+      EXPECT_GE(start, static_cast<double>(earliest[order_id]))
+        << "lot" << order_id << " starts before its arrival time";
+    }
+  }
+
+  printf("[with_events] computed_wct = %.2f\n", computed_wct);
+
+  const auto& objectives = routing_solution.get_objectives();
+  ASSERT_TRUE(objectives.count(objective_t::WEIGHTED_COMPLETION_TIME) > 0);
+  printf("[with_events] solver WCT   = %.2f  (baseline=122, +qtime=127, +arrival=143)\n",
+         objectives.at(objective_t::WEIGHTED_COMPLETION_TIME));
+  EXPECT_NEAR(objectives.at(objective_t::WEIGHTED_COMPLETION_TIME), computed_wct, 1e-3);
+}
+
+/**
+ * TEST 10 — heavy transit between two lots overrides weight-only priority
  *
  * 3 lots, 1 tool.
  * Locations: 0=depot, 1=lot_0, 2=lot_1, 3=lot_2
@@ -822,37 +960,38 @@ TEST(lot_scheduling, idle_time_overrides_weight_priority)
  * TEST 10 — pre-scheduled events modeled as exact-time vehicle breaks
  *
  * 3 lots, 1 tool, 1 pre-scheduled event.
- * Locations: 0=depot, 1=lot_0, 2=lot_1, 3=lot_2, 4=break_loc
+ * Locations: 0=depot, 1=lot_0, 2=lot_1, 3=lot_2  (no separate break location;
+ * the event can occur at any existing lot location — 0 extra transit).
  * Service times: {2, 1, 2}
  * Lot weights:   {3, 1, 3}
- * Transit: uniform=1 everywhere off-diagonal (5x5)
+ * Transit: uniform=1 everywhere off-diagonal (4x4)
  * Event: earliest=latest=4, duration=5  (tool busy t=4..9)
  *
- * At most 1 lot fits before the event: lot_0 or lot_2 finishes at t=3,
- * travels 1 unit to break_loc, arrives exactly at t=4 to start the break.
+ * At most 1 lot fits before the event: lot_0 or lot_2 (s=2) finishes at t=3,
+ * tool waits at current location until t=4 and takes the break in place.
  *
- * Optimal route (e.g. lot_0 → break → lot_2 → lot_1):
- *   C_0 = 1+2 = 3
- *   break: arrive t=4, start=max(4,4)=4, end=9
- *   C_2 = 9+1+2 = 12
- *   C_1 = 12+1+1 = 14
- *   WCT = 3*3 + 3*12 + 1*14 = 59
- * (symmetric: lot_2 → break → lot_0 → lot_1 also gives WCT=59)
+ * Solver-optimal route: lot_2(loc3) → break(loc1) → lot_0(loc1) → lot_1(loc2)
+ *   C_2 = 1+2 = 3
+ *   break at loc1: transit(loc3→loc1)=1, arrival=4, start=max(4,4)=4, end=9
+ *   lot_0 at loc1: transit(loc1→loc1)=0, start=9, C_0 = 9+2 = 11
+ *   lot_1 at loc2: transit(loc1→loc2)=1, start=12, C_1 = 12+1 = 13
+ *   WCT = 3*3 + 3*11 + 1*13 = 9+33+13 = 55
+ * (The solver saves 1 transit unit by placing the break at lot_0's location.)
  *
- * Checks: SUCCESS; reported WCT==59; no service node starts in the break window [4,9).
+ * Checks: SUCCESS; reported WCT==55; no service node starts in the break window [4,9).
  */
 TEST(lot_scheduling, events_disrupt_scheduling)
 {
   raft::handle_t handle;
   auto stream = handle.get_stream();
 
-  const int n_locations    = 5;  // depot=0, lot_0=1, lot_1=2, lot_2=3, break_loc=4
+  const int n_locations    = 4;  // depot=0, lot_0=1, lot_1=2, lot_2=3
   const int n_vehicles     = 1;
   const int n_orders       = 3;
   const int break_earliest = 4;
   const int break_duration = 5;  // event from t=4 to t=9
 
-  // Transit: uniform 1 off-diagonal (5x5)
+  // Transit: uniform 1 off-diagonal (4x4)
   std::vector<float> transit_matrix(n_locations * n_locations);
   std::vector<float> cost_matrix(n_locations * n_locations);
   for (int i = 0; i < n_locations; ++i) {
@@ -867,7 +1006,8 @@ TEST(lot_scheduling, events_disrupt_scheduling)
   std::vector<double> lot_weights  = {3., 1., 3.};
 
   // One break per vehicle: earliest=latest=4, duration=5
-  std::vector<int> break_locations_h = {4};
+  // Break can occur at any existing lot location (no dedicated break node)
+  std::vector<int> break_locations_h = {1, 2, 3};
   std::vector<int> v_e_h             = {break_earliest};
   std::vector<int> v_l_h             = {break_earliest};  // latest == earliest => exact start
   std::vector<int> v_d_h             = {break_duration};
@@ -917,10 +1057,9 @@ TEST(lot_scheduling, events_disrupt_scheduling)
       printf("[events_disrupt]  depot  | v%d\n", host_route.truck_id[i]);
       continue;
     }
-    // Transit is always 1 (uniform off-diagonal matrix)
-    double arrival = tool_time + 1.0;
     if (ntype == k_break) {
-      double start = std::max(arrival, static_cast<double>(break_earliest));
+      // Break occurs at an existing lot location (no extra transit); tool waits in place
+      double start = std::max(tool_time, static_cast<double>(break_earliest));
       tool_time    = start + break_duration;
       printf("[events_disrupt]  break  | v%d | start=%.1f end=%.1f\n",
              host_route.truck_id[i],
@@ -928,7 +1067,8 @@ TEST(lot_scheduling, events_disrupt_scheduling)
              tool_time);
       continue;
     }
-    // Service node
+    // Service node: transit=1 from previous position (uniform off-diagonal matrix)
+    double arrival    = tool_time + 1.0;
     int order_id      = host_route.route[i];
     double start      = arrival;  // no lot arrival constraints in this test
     double completion = start + service_times[order_id];
@@ -952,9 +1092,11 @@ TEST(lot_scheduling, events_disrupt_scheduling)
 
   const auto& objectives = routing_solution.get_objectives();
   ASSERT_TRUE(objectives.count(objective_t::WEIGHTED_COMPLETION_TIME) > 0);
-  printf("[events_disrupt] solver WCT  =%.2f  (expected 59.0)\n",
+  printf("[events_disrupt] solver WCT  =%.2f  (expected 55.0)\n",
          objectives.at(objective_t::WEIGHTED_COMPLETION_TIME));
-  EXPECT_NEAR(objectives.at(objective_t::WEIGHTED_COMPLETION_TIME), 59.0, 1e-3);
+  // Optimal: solver places break at lot_0's location (transit=0 after break),
+  // which saves 1 unit vs placing break at a different location → WCT=55 not 59.
+  EXPECT_NEAR(objectives.at(objective_t::WEIGHTED_COMPLETION_TIME), 55.0, 1e-3);
 }
 
 }  // namespace test

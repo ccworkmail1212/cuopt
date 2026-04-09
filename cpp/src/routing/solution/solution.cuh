@@ -334,8 +334,11 @@ DI node_t<i_t, f_t, REQUEST> create_break_node(
   node.prize_dim.prize = 0.;
 
   // lot_weight = 0 for breaks (default); node_info carries BREAK type + index for service-time
-  // lookup via vehicle_info.break_durations in lot_schedule_node_t::calculate_forward
-  node.lot_schedule_dim.node_info = node_info;
+  // lookup via vehicle_info.break_durations in lot_schedule_node_t::calculate_forward.
+  // Mirror the TIME dimension window_start so calculate_forward waits for the break's
+  // actual earliest start (exact-time events have window_start == window_end).
+  node.lot_schedule_dim.node_info     = node_info;
+  node.lot_schedule_dim.earliest_time = special_nodes.earliest_time[index];
 
   node.request = request_info_t<i_t, REQUEST>(node_info, node_info);
   return node;
