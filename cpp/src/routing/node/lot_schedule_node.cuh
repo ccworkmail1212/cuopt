@@ -12,6 +12,7 @@
 
 #include <routing/fleet_info.hpp>
 #include <routing/routing_details.hpp>
+#include <routing/structures.hpp>
 
 namespace cuopt {
 namespace routing {
@@ -45,14 +46,16 @@ namespace detail {
  * Arc value for this dimension = travel_time(from, to) only.
  * Service time is fetched from vehicle_info.order_service_times at propagation time.
  *
- * Depot nodes must be initialised with lot_weight = 0, node_id = -1.
+ * Depot/break nodes must be initialised with lot_weight = 0 and node_info set to the
+ * appropriate NodeInfo (DEPOT or BREAK type). Service time for breaks is read from
+ * vehicle_info.break_durations[node_info.node()] at propagation time.
  */
 template <typename i_t, typename f_t>
 class lot_schedule_node_t {
  public:
   // ---- Fixed data (set once from problem input) ----
-  double lot_weight = 0.0;  //! Importance weight of this lot; 0 for depot nodes
-  i_t node_id       = -1;   //! Order index into vehicle_info.order_service_times; -1 for depots
+  double lot_weight = 0.0;    //! Importance weight of this lot; 0 for non-service nodes
+  NodeInfo<i_t> node_info{};  //! Node identity: type (DEPOT/DELIVERY/BREAK) + index
 
   //! Earliest allowable start time (lot arrival time). 0 = no constraint.
   double earliest_time = 0.0;
@@ -86,6 +89,25 @@ class lot_schedule_node_t {
   double bwd_qtime_excess = 0.0;
 
   // -----------------------------------------------------------------------
+  // Service-time helper: mirrors get_transit_time's logic in arc_value.hpp.
+  // DEPOT → 0, BREAK → break_durations[node()], SERVICE → order_service_times[node()].
+  // -----------------------------------------------------------------------
+  template <bool is_device = true>
+  HDI static double get_service_time(const lot_schedule_node_t& n,
+                                     const VehicleInfo<f_t, is_device>& vehicle_info) noexcept
+  {
+    if (n.node_info.is_depot()) { return 0.; }
+    if (n.node_info.is_break()) {
+      return vehicle_info.break_durations.empty()
+               ? 0.
+               : static_cast<double>(vehicle_info.break_durations[n.node_info.node()]);
+    }
+    return vehicle_info.order_service_times.empty()
+             ? 0.
+             : static_cast<double>(vehicle_info.order_service_times[n.node_info.node()]);
+  }
+
+  // -----------------------------------------------------------------------
   // calculate_forward
   // Called as:  this.calculate_forward(next, travel_time, vehicle_info)
   // arc = travel_time(this -> next)
@@ -101,13 +123,8 @@ class lot_schedule_node_t {
                              double travel_time,
                              const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
-    double service_time_next =
-      (next.node_id >= 0 && !vehicle_info.order_service_times.empty())
-        ? static_cast<double>(vehicle_info.order_service_times[next.node_id])
-        : 0.;
-    double service_time_this = (node_id >= 0 && !vehicle_info.order_service_times.empty())
-                                 ? static_cast<double>(vehicle_info.order_service_times[node_id])
-                                 : 0.;
+    double service_time_next = get_service_time<is_device>(next, vehicle_info);
+    double service_time_this = get_service_time<is_device>(*this, vehicle_info);
 
     double arrival      = fwd_qtime_dep + service_time_this + travel_time;
     double actual_start = (next.earliest_time > 0.) ? max(arrival, next.earliest_time) : arrival;
@@ -146,11 +163,8 @@ class lot_schedule_node_t {
                               const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
     // --- WCT backward ---
-    double service_time_prev =
-      (prev.node_id >= 0 && !vehicle_info.order_service_times.empty())
-        ? static_cast<double>(vehicle_info.order_service_times[prev.node_id])
-        : 0.;
-    prev.bwd_weight_sum = prev.lot_weight + bwd_weight_sum;
+    double service_time_prev = get_service_time<is_device>(prev, vehicle_info);
+    prev.bwd_weight_sum      = prev.lot_weight + bwd_weight_sum;
     prev.bwd_wct_rel =
       prev.bwd_weight_sum * service_time_prev + bwd_wct_rel + bwd_weight_sum * travel_time;
 
@@ -176,11 +190,8 @@ class lot_schedule_node_t {
                             const VehicleInfo<f_t>& vehicle_info,
                             double travel_time) noexcept
   {
-    double service_time_prev =
-      (prev.node_id >= 0 && !vehicle_info.order_service_times.empty())
-        ? static_cast<double>(vehicle_info.order_service_times[prev.node_id])
-        : 0.;
-    double arrival      = prev.fwd_qtime_dep + service_time_prev + travel_time;
+    double service_time_prev = get_service_time<true>(prev, vehicle_info);
+    double arrival           = prev.fwd_qtime_dep + service_time_prev + travel_time;
     double actual_start = (next.earliest_time > 0.) ? max(arrival, next.earliest_time) : arrival;
     return prev.fwd_qtime_excess + max(0., actual_start - next.bwd_qtime_dep);
   }
@@ -232,9 +243,7 @@ class lot_schedule_node_t {
                     objective_cost_t& obj_cost,
                     infeasible_cost_t& inf_cost) const noexcept
   {
-    double service_time = (node_id >= 0 && !vehicle_info.order_service_times.empty())
-                            ? static_cast<double>(vehicle_info.order_service_times[node_id])
-                            : 0.;
+    double service_time = get_service_time<is_device>(*this, vehicle_info);
     double handoff_time = fwd_completion - service_time;  // = actual_start[this]
     obj_cost[objective_t::WEIGHTED_COMPLETION_TIME] =
       prev_node.fwd_wct + handoff_time * bwd_weight_sum + bwd_wct_rel;

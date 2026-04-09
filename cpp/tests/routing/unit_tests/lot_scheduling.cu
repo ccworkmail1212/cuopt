@@ -724,6 +724,239 @@ TEST(lot_scheduling, vehicle_order_cost_steers_tool_assignment)
   EXPECT_NEAR(objectives.at(objective_t::WEIGHTED_COMPLETION_TIME), 6.0, 1e-3);
 }
 
+/**
+ * TEST 9 — heavy transit between two lots overrides weight-only priority
+ *
+ * 3 lots, 1 tool.
+ * Locations: 0=depot, 1=lot_0, 2=lot_1, 3=lot_2
+ * Service times: {2, 1, 2}
+ * Lot weights:   {4, 1, 4}
+ * Transit: uniform=1 except t(1,3)=t(3,1)=20 (heavy idle between lot_0 and lot_2)
+ *
+ * Without heavy transit (uniform=1):
+ *   Route lot_0→lot_2→lot_1: C_0=3, C_2=6, C_1=8   WCT=4*3+4*6+1*8=44  <-- would be optimal
+ *
+ * With t(1,3)=t(3,1)=20:
+ *   Route lot_0→lot_2→lot_1 (adjacent): C_0=3, C_2=3+20+2=25, C_1=27  WCT=139
+ *   Route lot_0→lot_1→lot_2 (separated): C_0=3, C_1=5, C_2=8          WCT=4*3+1*5+4*8=49
+ *   (symmetric: lot_2→lot_1→lot_0 also gives WCT=49)
+ *
+ * Expected: WCT=49; lot_0 (order 0) and lot_2 (order 2) are not adjacent.
+ */
+TEST(lot_scheduling, idle_time_overrides_weight_priority)
+{
+  raft::handle_t handle;
+  auto stream = handle.get_stream();
+
+  const int n_locations = 4;  // depot=0, lot_0=1, lot_1=2, lot_2=3
+  const int n_vehicles  = 1;
+  const int n_orders    = 3;
+
+  // Transit: uniform 1 except t(1,3)=t(3,1)=20
+  // clang-format off
+  std::vector<float> transit_matrix = {
+     0,  1,  1,  1,  // depot
+     1,  0,  1, 20,  // lot_0 -> heavy transit to lot_2
+     1,  1,  0,  1,  // lot_1
+     1, 20,  1,  0   // lot_2 -> heavy transit to lot_0
+  };
+  // clang-format on
+  // Cost matrix: small uniform values so WCT dominates
+  std::vector<float> cost_matrix(n_locations * n_locations, 0.001f);
+  for (int i = 0; i < n_locations; ++i)
+    cost_matrix[i * n_locations + i] = 0.f;
+
+  std::vector<int> order_locations = {1, 2, 3};
+  std::vector<int> service_times   = {2, 1, 2};
+  std::vector<double> lot_weights  = {4., 1., 4.};
+
+  auto v_cost_matrix         = cuopt::device_copy(cost_matrix, stream);
+  auto v_transit_time_matrix = cuopt::device_copy(transit_matrix, stream);
+  auto v_order_locations     = cuopt::device_copy(order_locations, stream);
+  auto v_service_times       = cuopt::device_copy(service_times, stream);
+  auto v_lot_weights         = cuopt::device_copy(lot_weights, stream);
+
+  cuopt::routing::data_model_view_t<int, float> data_model(
+    &handle, n_locations, n_vehicles, n_orders);
+  data_model.add_cost_matrix(v_cost_matrix.data());
+  data_model.add_transit_time_matrix(v_transit_time_matrix.data());
+  data_model.set_order_locations(v_order_locations.data());
+  data_model.set_order_service_times(v_service_times.data());
+  data_model.set_order_lot_weights(v_lot_weights.data());
+
+  cuopt::routing::solver_settings_t<int, float> settings;
+  settings.set_time_limit(3);
+
+  auto routing_solution = cuopt::routing::solve(data_model, settings);
+  handle.sync_stream();
+
+  ASSERT_EQ(routing_solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
+
+  auto host_route = cuopt::routing::host_assignment_t(routing_solution);
+  ASSERT_EQ(host_route.unserviced_nodes.size(), 0u);
+
+  // Extract the service-node order (skip DEPOT nodes, node_types==0)
+  std::vector<int> serve_order;
+  for (int i = 0; i < static_cast<int>(host_route.route.size()); i++) {
+    if (host_route.node_types[i] != 0) { serve_order.push_back(host_route.route[i]); }
+  }
+  ASSERT_EQ(static_cast<int>(serve_order.size()), n_orders);
+
+  // lot_0 (order 0) and lot_2 (order 2) must NOT be adjacent: the heavy transit
+  // t(1,3)=20 makes any route with them adjacent far worse than WCT=49.
+  for (int i = 0; i + 1 < static_cast<int>(serve_order.size()); i++) {
+    bool adj = (serve_order[i] == 0 && serve_order[i + 1] == 2) ||
+               (serve_order[i] == 2 && serve_order[i + 1] == 0);
+    EXPECT_FALSE(adj) << "lot_0 and lot_2 are adjacent at positions " << i << " and " << (i + 1)
+                      << "; lot_1 should separate them to avoid 20-unit transit penalty";
+  }
+
+  const auto& objectives = routing_solution.get_objectives();
+  ASSERT_TRUE(objectives.count(objective_t::WEIGHTED_COMPLETION_TIME) > 0);
+  printf("[idle_time] solver WCT = %.2f  (expected 49.0)\n",
+         objectives.at(objective_t::WEIGHTED_COMPLETION_TIME));
+  EXPECT_NEAR(objectives.at(objective_t::WEIGHTED_COMPLETION_TIME), 49.0, 1e-3);
+}
+
+/**
+ * TEST 10 — pre-scheduled events modeled as exact-time vehicle breaks
+ *
+ * 3 lots, 1 tool, 1 pre-scheduled event.
+ * Locations: 0=depot, 1=lot_0, 2=lot_1, 3=lot_2, 4=break_loc
+ * Service times: {2, 1, 2}
+ * Lot weights:   {3, 1, 3}
+ * Transit: uniform=1 everywhere off-diagonal (5x5)
+ * Event: earliest=latest=4, duration=5  (tool busy t=4..9)
+ *
+ * At most 1 lot fits before the event: lot_0 or lot_2 finishes at t=3,
+ * travels 1 unit to break_loc, arrives exactly at t=4 to start the break.
+ *
+ * Optimal route (e.g. lot_0 → break → lot_2 → lot_1):
+ *   C_0 = 1+2 = 3
+ *   break: arrive t=4, start=max(4,4)=4, end=9
+ *   C_2 = 9+1+2 = 12
+ *   C_1 = 12+1+1 = 14
+ *   WCT = 3*3 + 3*12 + 1*14 = 59
+ * (symmetric: lot_2 → break → lot_0 → lot_1 also gives WCT=59)
+ *
+ * Checks: SUCCESS; reported WCT==59; no service node starts in the break window [4,9).
+ */
+TEST(lot_scheduling, events_disrupt_scheduling)
+{
+  raft::handle_t handle;
+  auto stream = handle.get_stream();
+
+  const int n_locations    = 5;  // depot=0, lot_0=1, lot_1=2, lot_2=3, break_loc=4
+  const int n_vehicles     = 1;
+  const int n_orders       = 3;
+  const int break_earliest = 4;
+  const int break_duration = 5;  // event from t=4 to t=9
+
+  // Transit: uniform 1 off-diagonal (5x5)
+  std::vector<float> transit_matrix(n_locations * n_locations);
+  std::vector<float> cost_matrix(n_locations * n_locations);
+  for (int i = 0; i < n_locations; ++i) {
+    for (int j = 0; j < n_locations; ++j) {
+      transit_matrix[i * n_locations + j] = (i == j) ? 0.f : 1.f;
+      cost_matrix[i * n_locations + j]    = (i == j) ? 0.f : 0.001f;
+    }
+  }
+
+  std::vector<int> order_locations = {1, 2, 3};
+  std::vector<int> service_times   = {2, 1, 2};
+  std::vector<double> lot_weights  = {3., 1., 3.};
+
+  // One break per vehicle: earliest=latest=4, duration=5
+  std::vector<int> break_locations_h = {4};
+  std::vector<int> v_e_h             = {break_earliest};
+  std::vector<int> v_l_h             = {break_earliest};  // latest == earliest => exact start
+  std::vector<int> v_d_h             = {break_duration};
+
+  auto v_cost_matrix         = cuopt::device_copy(cost_matrix, stream);
+  auto v_transit_time_matrix = cuopt::device_copy(transit_matrix, stream);
+  auto v_order_locations     = cuopt::device_copy(order_locations, stream);
+  auto v_service_times       = cuopt::device_copy(service_times, stream);
+  auto v_lot_weights         = cuopt::device_copy(lot_weights, stream);
+  auto v_break_locations     = cuopt::device_copy(break_locations_h, stream);
+  auto v_e                   = cuopt::device_copy(v_e_h, stream);
+  auto v_l                   = cuopt::device_copy(v_l_h, stream);
+  auto v_d                   = cuopt::device_copy(v_d_h, stream);
+
+  cuopt::routing::data_model_view_t<int, float> data_model(
+    &handle, n_locations, n_vehicles, n_orders);
+  data_model.add_cost_matrix(v_cost_matrix.data());
+  data_model.add_transit_time_matrix(v_transit_time_matrix.data());
+  data_model.set_order_locations(v_order_locations.data());
+  data_model.set_order_service_times(v_service_times.data());
+  data_model.set_order_lot_weights(v_lot_weights.data());
+  data_model.set_break_locations(v_break_locations.data(), v_break_locations.size());
+  data_model.add_break_dimension(v_e.data(), v_l.data(), v_d.data());
+
+  cuopt::routing::solver_settings_t<int, float> settings;
+  settings.set_time_limit(3);
+
+  auto routing_solution = cuopt::routing::solve(data_model, settings);
+  handle.sync_stream();
+
+  ASSERT_EQ(routing_solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
+
+  auto host_route = cuopt::routing::host_assignment_t(routing_solution);
+  ASSERT_EQ(host_route.unserviced_nodes.size(), 0u);
+
+  // Walk route to verify no lot starts during [break_earliest, break_earliest+break_duration)
+  // and to independently compute WCT.
+  // node_type_t values: DEPOT=0, PICKUP=1, DELIVERY=2, BREAK=3
+  const int k_depot = 0, k_break = 3;
+  double tool_time    = 0.0;
+  double computed_wct = 0.0;
+
+  printf("[events_disrupt] node   | v | order | start | completion\n");
+  for (int i = 0; i < static_cast<int>(host_route.route.size()); i++) {
+    int ntype = host_route.node_types[i];
+    if (ntype == k_depot) {
+      printf("[events_disrupt]  depot  | v%d\n", host_route.truck_id[i]);
+      continue;
+    }
+    // Transit is always 1 (uniform off-diagonal matrix)
+    double arrival = tool_time + 1.0;
+    if (ntype == k_break) {
+      double start = std::max(arrival, static_cast<double>(break_earliest));
+      tool_time    = start + break_duration;
+      printf("[events_disrupt]  break  | v%d | start=%.1f end=%.1f\n",
+             host_route.truck_id[i],
+             start,
+             tool_time);
+      continue;
+    }
+    // Service node
+    int order_id      = host_route.route[i];
+    double start      = arrival;  // no lot arrival constraints in this test
+    double completion = start + service_times[order_id];
+    computed_wct += lot_weights[order_id] * completion;
+    tool_time = completion;
+
+    printf("[events_disrupt]  service| v%d | lot%-2d | %5.1f | %10.1f\n",
+           host_route.truck_id[i],
+           order_id,
+           start,
+           completion);
+
+    // No service node should start inside the break window [4, 9)
+    bool in_break_window = (start >= break_earliest && start < break_earliest + break_duration);
+    EXPECT_FALSE(in_break_window) << "lot" << order_id << " starts at t=" << start
+                                  << " inside break window [" << break_earliest << ", "
+                                  << (break_earliest + break_duration) << ")";
+  }
+
+  printf("[events_disrupt] computed_wct=%.2f\n", computed_wct);
+
+  const auto& objectives = routing_solution.get_objectives();
+  ASSERT_TRUE(objectives.count(objective_t::WEIGHTED_COMPLETION_TIME) > 0);
+  printf("[events_disrupt] solver WCT  =%.2f  (expected 59.0)\n",
+         objectives.at(objective_t::WEIGHTED_COMPLETION_TIME));
+  EXPECT_NEAR(objectives.at(objective_t::WEIGHTED_COMPLETION_TIME), 59.0, 1e-3);
+}
+
 }  // namespace test
 }  // namespace routing
 }  // namespace cuopt

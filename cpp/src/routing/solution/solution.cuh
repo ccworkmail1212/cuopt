@@ -95,7 +95,7 @@ DI node_t<i_t, f_t, REQUEST> create_node(const typename problem_t<i_t, f_t>::vie
   if (problem.dimensions_info.has_dimension(dim_t::LOT_SCHEDULE) &&
       !problem.order_info.lot_weights.empty()) {
     node.lot_schedule_dim.lot_weight = problem.order_info.lot_weights[node_idx];
-    node.lot_schedule_dim.node_id    = node_idx;
+    node.lot_schedule_dim.node_info  = node_info;
     node.lot_schedule_dim.earliest_time =
       !problem.order_info.earliest_time.empty()
         ? static_cast<double>(problem.order_info.earliest_time[node_idx])
@@ -175,7 +175,7 @@ constexpr node_t<i_t, f_t, REQUEST> create_node(const problem_t<i_t, f_t>* probl
   if (problem->dimensions_info.has_dimension(dim_t::LOT_SCHEDULE) &&
       !problem->order_info_h.lot_weights.empty()) {
     node.lot_schedule_dim.lot_weight = problem->order_info_h.lot_weights[node_idx];
-    node.lot_schedule_dim.node_id    = node_idx;
+    node.lot_schedule_dim.node_info  = node_info;
     node.lot_schedule_dim.earliest_time =
       !problem->order_info_h.earliest_time.empty()
         ? static_cast<double>(problem->order_info_h.earliest_time[node_idx])
@@ -271,7 +271,7 @@ DI node_t<i_t, f_t, REQUEST> create_depot_node(const typename problem_t<i_t, f_t
 
   node.prize_dim.prize             = 0.;
   node.lot_schedule_dim.lot_weight = 0.;
-  node.lot_schedule_dim.node_id    = -1;
+  node.lot_schedule_dim.node_info  = NodeInfo<i_t>{};  // default = DEPOT type
   node.request                     = request_info_t<i_t, REQUEST>(node_info, brother_info);
   return node;
 }
@@ -309,7 +309,7 @@ constexpr node_t<i_t, f_t, REQUEST> create_depot_node(const problem_t<i_t, f_t>*
 
   node.prize_dim.prize             = 0.;
   node.lot_schedule_dim.lot_weight = 0.;
-  node.lot_schedule_dim.node_id    = -1;
+  node.lot_schedule_dim.node_info  = NodeInfo<i_t>{};  // default = DEPOT type
   node.request                     = request_info_t<i_t, REQUEST>(node_info, brother_info);
   return node;
 }
@@ -332,6 +332,10 @@ DI node_t<i_t, f_t, REQUEST> create_break_node(
   // FIXME:: setting the prize to zero for now.
   // When we support breaks through prize collection mechanism, this will change
   node.prize_dim.prize = 0.;
+
+  // lot_weight = 0 for breaks (default); node_info carries BREAK type + index for service-time
+  // lookup via vehicle_info.break_durations in lot_schedule_node_t::calculate_forward
+  node.lot_schedule_dim.node_info = node_info;
 
   node.request = request_info_t<i_t, REQUEST>(node_info, node_info);
   return node;

@@ -63,11 +63,11 @@ __device__ void set_route_data(typename problem_t<i_t, f_t>::view_t const& probl
       ls.bwd_weight_sum[n_nodes_route] = 0.;
       ls.bwd_wct_rel[n_nodes_route]    = 0.;
       ls.lot_weight[0]                 = 0.;
-      ls.node_id[0]                    = -1;
+      ls.node_info[0]                  = NodeInfo<>{};  // default = DEPOT type
       ls.earliest_time[0]              = 0.;
       ls.max_qtime[0]                  = 0.;
       ls.lot_weight[n_nodes_route]     = 0.;
-      ls.node_id[n_nodes_route]        = -1;
+      ls.node_info[n_nodes_route]      = NodeInfo<>{};  // default = DEPOT type
       ls.earliest_time[n_nodes_route]  = 0.;
       ls.max_qtime[n_nodes_route]      = 0.;
       // Qtime: trucks always start at t=0; return depot imposes no qtime constraint.
