@@ -642,6 +642,88 @@ TEST(lot_scheduling, arrival_time_flips_order)
   EXPECT_NEAR(objectives.at(objective_t::WEIGHTED_COMPLETION_TIME), 20.0, 1e-3);
 }
 
+/**
+ * TEST 8 — vehicle_order_cost steers lot-to-tool assignment alongside WCT
+ *
+ * 2 tools (vehicles), 2 lots (orders at locations 1 and 2).
+ * Transit times: t(0->1)=1, t(0->2)=3.  Service times: {1, 1}.
+ * Lot weights: {1.0, 1.0}.
+ *
+ * vehicle_order_cost:
+ *   tool_0: {0.0, 1000.0}  -> tool_0 strongly prefers lot_0
+ *   tool_1: {1000.0, 0.0}  -> tool_1 strongly prefers lot_1
+ *
+ * Without vehicle_order_cost both assignments have identical WCT = 2+4 = 6,
+ * so cost alone cannot distinguish them.  With vehicle_order_cost the solver
+ * must pick: tool_0 serves lot_0, tool_1 serves lot_1.
+ *
+ * Expected WCT:
+ *   tool_0: C(lot_0) = t(0->1) + s_0 = 1+1 = 2
+ *   tool_1: C(lot_1) = t(0->2) + s_1 = 3+1 = 4
+ *   WCT = 1*2 + 1*4 = 6
+ */
+TEST(lot_scheduling, vehicle_order_cost_steers_tool_assignment)
+{
+  raft::handle_t handle;
+  auto stream = handle.get_stream();
+
+  const int n_locations = 3;  // depot=0, lot_0=1, lot_1=2
+  const int n_vehicles  = 2;
+  const int n_orders    = 2;
+
+  std::vector<int> order_locations = {1, 2};
+  std::vector<int> service_times   = {1, 1};
+  std::vector<double> lot_weights  = {1.0, 1.0};
+
+  // tool_0 prefers lot_0, tool_1 prefers lot_1
+  std::vector<double> costs_tool0 = {0.0, 1000.0};
+  std::vector<double> costs_tool1 = {1000.0, 0.0};
+
+  auto v_cost_matrix         = cuopt::device_copy(k_cost_matrix, stream);
+  auto v_transit_time_matrix = cuopt::device_copy(k_transit_times, stream);
+  auto v_order_locations     = cuopt::device_copy(order_locations, stream);
+  auto v_service_times       = cuopt::device_copy(service_times, stream);
+  auto v_lot_weights         = cuopt::device_copy(lot_weights, stream);
+  auto v_costs_tool0         = cuopt::device_copy(costs_tool0, stream);
+  auto v_costs_tool1         = cuopt::device_copy(costs_tool1, stream);
+
+  cuopt::routing::data_model_view_t<int, float> data_model(
+    &handle, n_locations, n_vehicles, n_orders);
+  data_model.add_cost_matrix(v_cost_matrix.data());
+  data_model.add_transit_time_matrix(v_transit_time_matrix.data());
+  data_model.set_order_locations(v_order_locations.data());
+  data_model.set_order_service_times(v_service_times.data());
+  data_model.set_order_lot_weights(v_lot_weights.data());
+  data_model.set_vehicle_order_cost(0, v_costs_tool0.data(), n_orders);
+  data_model.set_vehicle_order_cost(1, v_costs_tool1.data(), n_orders);
+  data_model.set_min_vehicles(n_vehicles);
+
+  cuopt::routing::solver_settings_t<int, float> settings;
+  settings.set_time_limit(3);
+
+  auto routing_solution = cuopt::routing::solve(data_model, settings);
+  handle.sync_stream();
+
+  ASSERT_EQ(routing_solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
+
+  auto host_route = cuopt::routing::host_assignment_t(routing_solution);
+
+  // Build order->vehicle assignment map
+  std::unordered_map<int, int> assignment;
+  for (size_t i = 0; i < host_route.route.size(); ++i) {
+    int order = host_route.route[i];
+    if (order >= 0) { assignment[order] = host_route.truck_id[i]; }
+  }
+
+  // lot_0 must go to tool_0, lot_1 must go to tool_1
+  EXPECT_EQ(assignment[0], 0);
+  EXPECT_EQ(assignment[1], 1);
+
+  const auto& objectives = routing_solution.get_objectives();
+  ASSERT_TRUE(objectives.count(objective_t::WEIGHTED_COMPLETION_TIME) > 0);
+  EXPECT_NEAR(objectives.at(objective_t::WEIGHTED_COMPLETION_TIME), 6.0, 1e-3);
+}
+
 }  // namespace test
 }  // namespace routing
 }  // namespace cuopt
