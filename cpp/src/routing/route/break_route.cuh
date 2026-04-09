@@ -150,7 +150,7 @@ class break_route_t {
                                     [[maybe_unused]] break_dimension_info_t dim_info)
   {
     // forward, backward
-    return 2 * route_size * sizeof(int);
+    return 2 * raft::alignTo(route_size * sizeof(int), sizeof(double));
   }
 
   break_dimension_info_t dim_info;

@@ -169,7 +169,8 @@ class mismatch_route_t {
   {
     // 2 i_t arrays (mismatch_forward, mismatch_backward) + 2 double arrays (cost_forward,
     // cost_backward)
-    return 2 * (route_size + 1) * sizeof(i_t) + 2 * (route_size + 1) * sizeof(double);
+    return 2 * raft::alignTo((route_size + 1) * sizeof(i_t), sizeof(double)) +
+           2 * (route_size + 1) * sizeof(double);
   }
 
   mismatch_dimension_info_t dim_info;

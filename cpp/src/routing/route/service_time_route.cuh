@@ -149,7 +149,7 @@ class service_time_route_t {
                                     [[maybe_unused]] service_time_dimension_info_t dim_info)
   {
     // forward, backward
-    return 2 * route_size * sizeof(double);
+    return 2 * raft::alignTo(route_size * sizeof(double), sizeof(double));
   }
 
   service_time_dimension_info_t dim_info;

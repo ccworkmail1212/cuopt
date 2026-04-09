@@ -142,7 +142,7 @@ class tasks_route_t {
                                     [[maybe_unused]] tasks_dimension_info_t dim_info)
   {
     // forward, backward
-    return 2 * route_size * sizeof(i_t);
+    return 2 * raft::alignTo(route_size * sizeof(i_t), sizeof(double));
   }
 
   tasks_dimension_info_t dim_info;

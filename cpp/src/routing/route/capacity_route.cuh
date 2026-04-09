@@ -212,7 +212,8 @@ class capacity_route_t {
   HDI static size_t get_shared_size(i_t route_size, capacity_dimension_info_t dim_info)
   {
     // demand, gathered, max_to_node, max_after
-    return dim_info.n_capacity_dimensions * 4 * route_size * sizeof(i_t);
+    return 4 *
+           raft::alignTo(dim_info.n_capacity_dimensions * route_size * sizeof(i_t), sizeof(double));
   }
 
   //! Data copied from problem

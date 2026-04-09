@@ -239,7 +239,8 @@ class lot_schedule_route_t {
                                     [[maybe_unused]] lot_schedule_dimension_info_t dim_info_)
   {
     // 11 double arrays + 1 i_t array, each of size route_size + 1
-    return 11 * (route_size + 1) * sizeof(double) + (route_size + 1) * sizeof(i_t);
+    return 11 * (route_size + 1) * sizeof(double) +
+           raft::alignTo((route_size + 1) * sizeof(i_t), sizeof(double));
   }
 
   lot_schedule_dimension_info_t dim_info;
