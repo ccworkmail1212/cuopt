@@ -1026,6 +1026,70 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         super().set_vehicle_order_cost(vehicle_id, costs)
 
     @catch_cuopt_exception
+    def set_order_lot_weights(self, lot_weights):
+        """
+        Set per-lot weights used to compute the weighted completion time (WCT)
+        objective in lot scheduling problems. Higher-weight lots are
+        prioritized for earlier processing.
+
+        Parameters
+        ----------
+        lot_weights : cudf.Series dtype - float64
+            Non-negative weights of size number of orders. The depot order
+            should have weight 0.
+
+        Examples
+        --------
+        >>> n_locations = 4
+        >>> n_vehicles = 2
+        >>> d = routing.DataModel(n_locations, n_vehicles)
+        >>> d.set_order_lot_weights(cudf.Series([0., 2., 1., 3.]))
+        >>> cuopt_solution = routing.Solve(d)
+        """
+
+        validate_size(
+            lot_weights,
+            "lot weights",
+            self.get_num_orders(),
+            "number of orders",
+        )
+        validate_non_negative(lot_weights, "lot weights")
+        super().set_order_lot_weights(lot_weights)
+
+    @catch_cuopt_exception
+    def set_order_max_qtimes(self, max_qtimes):
+        """
+        Set per-lot maximum queue times (latest start times) for lot
+        scheduling. A lot's processing must begin no later than its
+        max_qtime after it becomes available (i.e., after its earliest
+        arrival time).
+
+        Parameters
+        ----------
+        max_qtimes : cudf.Series dtype - float64
+            Non-negative max queue times of size number of orders. Use a
+            large value (e.g. 1e15) to indicate no constraint for a given
+            order. The depot order should have a large value.
+
+        Examples
+        --------
+        >>> n_locations = 4
+        >>> n_vehicles = 2
+        >>> d = routing.DataModel(n_locations, n_vehicles)
+        >>> d.set_order_max_qtimes(cudf.Series([1e15, 4., 1e15, 4.]))
+        >>> cuopt_solution = routing.Solve(d)
+        """
+
+        validate_size(
+            max_qtimes,
+            "max qtimes",
+            self.get_num_orders(),
+            "number of orders",
+        )
+        validate_non_negative(max_qtimes, "max qtimes")
+        super().set_order_max_qtimes(max_qtimes)
+
+    @catch_cuopt_exception
     def add_capacity_dimension(self, name, demand, capacity):
         """
         Add capacity dimensions to model the Capacitated Vehicle Routing

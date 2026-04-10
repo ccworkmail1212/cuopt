@@ -201,6 +201,8 @@ cdef class DataModel:
         self.order_vehicle_match = {}
         self.order_service_times = {}
         self.vehicle_order_cost = {}
+        self.order_lot_weights = cudf.Series()
+        self.order_max_qtimes = cudf.Series()
 
         self.initial_vehicle_ids = cudf.Series()
         self.initial_routes = cudf.Series()
@@ -436,6 +438,22 @@ cdef class DataModel:
             .__cuda_array_interface__['data'][0]
         self.c_data_model_view.get().set_vehicle_order_cost(
             vehicle_id, <const double *> c_costs, len(costs))
+
+    def set_order_lot_weights(self, lot_weights):
+        self.order_lot_weights = type_cast(lot_weights, np.float64, "lot_weights")
+        cdef uintptr_t c_lot_weights = (
+            self.order_lot_weights.__cuda_array_interface__['data'][0]
+        )
+        self.c_data_model_view.get().set_order_lot_weights(
+            <const double *> c_lot_weights)
+
+    def set_order_max_qtimes(self, max_qtimes):
+        self.order_max_qtimes = type_cast(max_qtimes, np.float64, "max_qtimes")
+        cdef uintptr_t c_max_qtimes = (
+            self.order_max_qtimes.__cuda_array_interface__['data'][0]
+        )
+        self.c_data_model_view.get().set_order_max_qtimes(
+            <const double *> c_max_qtimes)
 
     def add_break_dimension(
         self, break_earliest, break_latest, break_duration
