@@ -987,6 +987,45 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         super().set_order_service_times(service_times, vehicle_id)
 
     @catch_cuopt_exception
+    def set_vehicle_order_cost(self, vehicle_id, costs):
+        """
+        Set per-vehicle assignment costs for each order. Used with the
+        MISMATCH dimension to penalize or steer tool-to-lot assignments
+        in lot scheduling scenarios.
+
+        Parameters
+        ----------
+        vehicle_id : int
+            Vehicle (tool) id for which costs are being set
+        costs : cudf.Series dtype - float64
+            Assignment costs of size number of orders. costs[i] is the
+            cost incurred when vehicle_id processes order i.
+
+        Note: A user can set this multiple times. However, if it is
+              set more than once for the same vehicle, the costs list will
+              be overridden with the most recent function call.
+
+        Examples
+        --------
+        >>> n_locations = 4
+        >>> n_vehicles = 2
+        >>> d = routing.DataModel(n_locations, n_vehicles)
+        >>> # vehicle 0 prefers orders 0,1; vehicle 1 prefers orders 2,3
+        >>> d.set_vehicle_order_cost(0, cudf.Series([0., 0., 10., 10.]))
+        >>> d.set_vehicle_order_cost(1, cudf.Series([10., 10., 0., 0.]))
+        >>> cuopt_solution = routing.Solve(d)
+        """
+
+        validate_size(
+            costs,
+            "vehicle order costs",
+            self.get_num_orders(),
+            "number of orders",
+        )
+        validate_non_negative(costs, "vehicle order costs")
+        super().set_vehicle_order_cost(vehicle_id, costs)
+
+    @catch_cuopt_exception
     def add_capacity_dimension(self, name, demand, capacity):
         """
         Add capacity dimensions to model the Capacitated Vehicle Routing

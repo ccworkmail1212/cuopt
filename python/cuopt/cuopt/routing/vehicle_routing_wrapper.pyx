@@ -200,6 +200,7 @@ cdef class DataModel:
         self.vehicle_order_match = {}
         self.order_vehicle_match = {}
         self.order_service_times = {}
+        self.vehicle_order_cost = {}
 
         self.initial_vehicle_ids = cudf.Series()
         self.initial_routes = cudf.Series()
@@ -425,6 +426,16 @@ cdef class DataModel:
             .__cuda_array_interface__['data'][0]
         self.c_data_model_view.get().set_order_service_times(
             <const int *> c_service_times, vehicle_id)
+
+    def set_vehicle_order_cost(self, vehicle_id, costs):
+        self.vehicle_order_cost[vehicle_id] = type_cast(
+            costs, np.float64, "vehicle_order_cost"
+        )
+        cdef uintptr_t c_costs =\
+            self.vehicle_order_cost[vehicle_id] \
+            .__cuda_array_interface__['data'][0]
+        self.c_data_model_view.get().set_vehicle_order_cost(
+            vehicle_id, <const double *> c_costs, len(costs))
 
     def add_break_dimension(
         self, break_earliest, break_latest, break_duration

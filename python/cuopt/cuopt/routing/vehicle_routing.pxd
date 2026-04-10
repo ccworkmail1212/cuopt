@@ -86,6 +86,10 @@ cdef extern from "cuopt/routing/solve.hpp" namespace "cuopt::routing":
         void set_order_service_times(
             const int* service_times,
             const int vehicle_id) except +
+        void set_vehicle_order_cost(
+            const int vehicle_id,
+            const double* costs,
+            const int n_orders) except +
         void add_break_dimension(
             const i_t *break_earliest,
             const i_t *break_latest,
