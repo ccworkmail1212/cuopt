@@ -131,6 +131,10 @@ class Objective(IntEnum):
     VEHICLE_ORDER_COST  - Sum of vehicle-order assignment costs. Used to steer
                           tool-to-lot assignments in lot scheduling. Enabled
                           when set_vehicle_order_cost is used.
+
+    LOT_QTIME_PENALTY   - Sum of max(0, actual_start - max_qtime) * lot_weight per lot.
+                          Penalizes lots that start after their qtime deadline, weighted
+                          by lot_weight. Enabled when set_order_max_qtimes is used.
     """
 
     COST = objective_t.COST
@@ -141,6 +145,7 @@ class Objective(IntEnum):
     VEHICLE_FIXED_COST = objective_t.VEHICLE_FIXED_COST
     WEIGHTED_COMPLETION_TIME = objective_t.WEIGHTED_COMPLETION_TIME
     VEHICLE_ORDER_COST = objective_t.VEHICLE_ORDER_COST
+    LOT_QTIME_PENALTY = objective_t.LOT_QTIME_PENALTY
 
 
 class NodeType(IntEnum):

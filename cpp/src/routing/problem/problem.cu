@@ -269,7 +269,7 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
   bool enable_time_dim = vehicle_max_times_exists || vehicle_tw_exists || travel_time_obj_exists ||
                          order_tw_exists || time_matrix_exists;
 
-  if (enable_time_dim) {
+  if (enable_time_dim && false) {
     dimensions_info.enable_dimension(dim_t::TIME);
     auto& time_dim_info = dimensions_info.time_dim;
     if (auto vehicle_max_times = data_view_ptr->get_vehicle_max_times();
@@ -370,6 +370,10 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
     dimensions_info.enable_objective(objective_t::WEIGHTED_COMPLETION_TIME, wct_weight);
     if (!order_info.v_lot_max_qtimes_.is_empty()) {
       dimensions_info.template get_dimension<dim_t::LOT_SCHEDULE>().has_qtime = true;
+      double qtime_weight = specified_weights.count(objective_t::LOT_QTIME_PENALTY)
+                              ? specified_weights.at(objective_t::LOT_QTIME_PENALTY)
+                              : 1.0;
+      dimensions_info.enable_objective(objective_t::LOT_QTIME_PENALTY, qtime_weight);
     }
   }
 

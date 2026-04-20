@@ -269,9 +269,13 @@ DI node_t<i_t, f_t, REQUEST> create_depot_node(const typename problem_t<i_t, f_t
     if (i < node.capacity_dim.n_capacity_dimensions) { node.capacity_dim.demand[i] = 0; }
   });
 
-  node.prize_dim.prize                = 0.;
-  node.lot_schedule_dim.fwd_completion         = problem.fleet_info.earliest_time[vehicle_id];
-  node.request                        = request_info_t<i_t, REQUEST>(node_info, brother_info);
+  node.prize_dim.prize                    = 0.;
+  node.lot_schedule_dim.lot_weight        = 0.;
+  node.lot_schedule_dim.node_info         = NodeInfo<i_t>{};  // default = DEPOT type
+  node.lot_schedule_dim.fwd_completion    = earliest;
+  node.lot_schedule_dim.fwd_qtime_obj     = 0.;
+  node.lot_schedule_dim.bwd_n_constrained = 0;
+  node.request                            = request_info_t<i_t, REQUEST>(node_info, brother_info);
   return node;
 }
 
@@ -306,9 +310,13 @@ constexpr node_t<i_t, f_t, REQUEST> create_depot_node(const problem_t<i_t, f_t>*
     if (i < node.capacity_dim.n_capacity_dimensions) { node.capacity_dim.demand[i] = 0; }
   });
 
-  node.prize_dim.prize                = 0.;
-  node.lot_schedule_dim.fwd_completion         = problem->fleet_info_h.earliest_time[vehicle_id];
-  node.request                        = request_info_t<i_t, REQUEST>(node_info, brother_info);
+  node.prize_dim.prize                    = 0.;
+  node.lot_schedule_dim.lot_weight        = 0.;
+  node.lot_schedule_dim.node_info         = NodeInfo<i_t>{};  // default = DEPOT type
+  node.lot_schedule_dim.fwd_completion    = earliest;
+  node.lot_schedule_dim.fwd_qtime_obj     = 0.;
+  node.lot_schedule_dim.bwd_n_constrained = 0;
+  node.request                            = request_info_t<i_t, REQUEST>(node_info, brother_info);
   return node;
 }
 

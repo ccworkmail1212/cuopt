@@ -29,6 +29,8 @@ enum class objective_t {
   VEHICLE_FIXED_COST,           // Used when fixed vehicle cost are enabled
   WEIGHTED_COMPLETION_TIME,     // Sum of lot_weight * completion_time for each lot (lot scheduling)
   VEHICLE_ORDER_COST,           // Sum of vehicle-order assignment costs (mismatch dimension)
+  LOT_QTIME_PENALTY,            // Sum of max(0, actual_start - max_qtime) * lot_weight per lot (lot
+                                // scheduling)
   SIZE  // Helper enum to keep track of number of supported objective functions
 };
 

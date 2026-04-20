@@ -231,7 +231,7 @@ struct vehicle_fixed_cost_dimension_info_t {
 
 struct lot_schedule_dimension_info_t {
   bool has_qtime = false;
-  HDI bool has_constraints() const { return has_qtime; }
+  HDI constexpr bool has_constraints() const { return false; }
 };
 
 /**
@@ -426,8 +426,8 @@ class enabled_dimensions_t {
   static_assert((size_t)dim_t::SIZE < 32u, "Use higher precision integer!");
   uint32_t hash = 0;
 
-  static_assert((size_t)objective_t::SIZE <= 8u, "Use higher precision integer!");
-  uint8_t obj_hash = 0;
+  static_assert((size_t)objective_t::SIZE <= 16u, "Use higher precision integer!");
+  uint16_t obj_hash = 0;
 };
 
 }  // namespace detail

@@ -18,49 +18,49 @@ namespace cuopt {
 namespace routing {
 namespace detail {
 
+//! Maximum number of lots tracked in the backward qtime arrays per route position.
+//! Limits the node struct size (bwd_qtime_b/w[K] live in registers during backward propagation)
+//! and shared memory (execute_two_opt_moves allocates s_route + fragment, both carrying K arrays).
+//! Keep K small enough so that shared_route_size + size_of_frag stays within the device shmem
+//! limit. With K=12, routes with more than 12 lots silently drop the excess from the backward
+//! arrays (the oldest/leftmost lots), giving an approximate qtime penalty for those routes.
+static constexpr int MAX_LOT_SCHED_ROUTE_SIZE = 12;
+
 /**
  * @brief Per-node state for the LOT_SCHEDULE dimension.
  *
  * Tracks weighted completion time (WCT) for lot scheduling, and optionally
- * qtime (queue-time) infeasibility for lots that must begin processing within
- * a deadline measured from t=0.
+ * qtime (queue-time) penalty for lots that have a deadline measured from t=0.
  *
  * WCT = sum_k ( lot_weight[k] * completion_time[k] )
  * where completion_time[k] = time when the tool finishes processing lot k.
  *
- * Forward state — two parallel passes:
- *
- *   Real pass (for WCT):
- *     actual_start[k]   = max(fwd_completion[k-1] + transit_{k-1,k}, earliest_time[k])
- *     fwd_completion[k] = actual_start[k] + service_time[k]   (real departure; WCT only)
- *     fwd_wct[k]        = fwd_wct[k-1] + lot_weight[k] * fwd_completion[k]
- *
- *   Shadow pass (for qtime metric, mirrors TIME dimension's HY formulation):
- *     shadow_arrival[k]       = fwd_qtime_dep[k-1] + service[k-1] + transit_{k-1,k}
- *     shadow_actual_start[k]  = max(shadow_arrival[k], earliest_time[k])
- *     fwd_qtime_excess[k]    += max(0, shadow_actual_start[k] - max_qtime[k])
- *     fwd_qtime_dep[k]        = min(shadow_actual_start[k], max_qtime[k])   ← clamped
- *
- * The shadow pass is independent of the real pass. Clamping fwd_qtime_dep prevents the
- * shadow departure from cascading unclamped delays into the next node's shadow arrival, which
- * would cause double-counting in combine/get_cost (same reason TIME clamps departure_forward).
- * The backward propagation is consistent with the shadow: it uses service + transit to
- * compute the latest allowable shadow departure (bwd_qtime_dep) at each node.
+ * Forward state:
+ *   actual_start[k]   = max(fwd_completion[k-1] + transit_{k-1,k}, earliest_time[k])
+ *   fwd_completion[k] = actual_start[k] + service_time[k]
+ *   fwd_wct[k]        = fwd_wct[k-1] + lot_weight[k] * fwd_completion[k]
+ *   fwd_qtime_obj[k]  = fwd_qtime_obj[k-1]
+ *                       + max(0, actual_start[k] - max_qtime[k]) * lot_weight[k]
+ *                       (exact prefix sum; only when max_qtime[k] > 0)
  *
  * Backward WCT state accumulates weight sums and relative WCT (assuming zero
  * waiting due to earliest_time) so that combine() is O(1) at any split point.
- * The approximation is exact when no earliest_time waits occur in the suffix.
  *
- * Qtime constraint: lot k must START processing by max_qtime[k] (relative to t=0).
- * Violation = max(0, actual_start_k - max_qtime_k). One-sided upper-bound constraint,
- * so bwd_qtime_excess is always 0 (no backward violation from a lower bound).
+ * Backward qtime state: sorted array of (b_j, w_j) pairs where
+ *   b_j = max_qtime_j - delta_j^k  (effective breakpoint from split k)
+ *   delta_j^k = cumulative service+transit from position k to position j
+ * Sorted ascending by b_j. Updated each backward step by shifting all b_j
+ * by -(service[k] + transit[k,k+1]) and inserting node k at b_k = max_qtime[k].
+ *
+ * At get_cost for split k with handoff h (= actual_start[k]):
+ *   P_suffix(h) = sum_j  max(0, h - b_j) * w_j   (O(m) scan, m <= MAX_LOT_SCHED_ROUTE_SIZE)
+ *   total_qtime_penalty = prev.fwd_qtime_obj + P_suffix(h)
+ *
+ * LOT_SCHEDULE has no infeasibility constraints — purely objective.
+ * combine() always returns 0.
  *
  * Arc value for this dimension = travel_time(from, to) only.
  * Service time is fetched from vehicle_info.order_service_times at propagation time.
- *
- * Depot/break nodes must be initialised with lot_weight = 0 and node_info set to the
- * appropriate NodeInfo (DEPOT or BREAK type). Service time for breaks is read from
- * vehicle_info.break_durations[node_info.node()] at propagation time.
  */
 template <typename i_t, typename f_t>
 class lot_schedule_node_t {
@@ -86,22 +86,19 @@ class lot_schedule_node_t {
   //! Relative WCT of suffix [k..n] assuming handoff time = 0 and no earliest_time waits
   double bwd_wct_rel = 0.0;
 
-  // ---- Forward qtime state ----
-  //! Shadow clamped departure for qtime metric: min(shadow_actual_start, max_qtime).
-  //! Used by the shadow pass for transit (fwd_qtime_dep + service + transit → next shadow arrival)
-  //! and as the junction point in combine/get_cost. NOT used for real transit (WCT uses
-  //! fwd_completion). Analogous to TIME's departure_forward clamped at window_end.
-  double fwd_qtime_dep = 0.0;
-  //! Cumulative qtime violations up to and including this lot
-  double fwd_qtime_excess = 0.0;
+  // ---- Forward qtime objective state ----
+  //! Exact prefix sum: sum_{i=0}^{k} max(0, actual_start[i] - max_qtime[i]) * lot_weight[i]
+  //! (only for nodes with max_qtime > 0). Accumulated from forward propagation.
+  double fwd_qtime_obj = 0.0;
 
-  // ---- Backward qtime state ----
-  //! Latest allowable START of this lot so that this lot and all subsequent lots satisfy qtime.
-  //! Propagated as: bwd_qtime_dep[k] = min(max_qtime[k], bwd_qtime_dep[k+1] - s_k -
-  //! transit_{k,k+1})
-  double bwd_qtime_dep = 0.0;
-  //! Always 0: qtime is a one-sided upper-bound constraint, no backward excess.
-  double bwd_qtime_excess = 0.0;
+  // ---- Backward qtime objective state ----
+  //! Sorted (ascending by b_j) array of effective breakpoints b_j = max_qtime_j - delta_j^k.
+  //! At get_cost: P_suffix(h) = sum_j max(0, h - b_j) * w_j.
+  double bwd_qtime_b[MAX_LOT_SCHED_ROUTE_SIZE] = {};
+  //! Corresponding lot_weight values for each breakpoint entry.
+  double bwd_qtime_w[MAX_LOT_SCHED_ROUTE_SIZE] = {};
+  //! Number of valid entries in bwd_qtime_b / bwd_qtime_w.
+  int bwd_n_constrained = 0;
 
   // -----------------------------------------------------------------------
   // Service-time helper: mirrors get_transit_time's logic in arc_value.hpp.
@@ -127,21 +124,12 @@ class lot_schedule_node_t {
   // Called as:  this.calculate_forward(next, travel_time, vehicle_info)
   // arc = travel_time(this -> next)
   //
-  // Two independent passes:
-  //
-  // Real pass (WCT): uses fwd_completion (real departure) for transit.
-  //   actual_start = max(fwd_completion + transit, earliest_time[next])
+  //   actual_start        = max(fwd_completion + transit, earliest_time[next])
   //   next.fwd_completion = actual_start + service[next]
-  //
-  // Shadow pass (qtime metric): uses fwd_qtime_dep (clamped) + service[this] for transit.
-  //   shadow_arrival      = fwd_qtime_dep + service[this] + transit
-  //   shadow_actual_start = max(shadow_arrival, earliest_time[next])
-  //   next.fwd_qtime_excess += max(0, shadow_actual_start - max_qtime[next])
-  //   next.fwd_qtime_dep    = min(shadow_actual_start, max_qtime[next])   ← clamped
-  //
-  // Using fwd_qtime_dep (clamped) for shadow transit prevents a late actual_start from
-  // cascading unclamped into subsequent shadow arrivals and double-counting the violation.
-  // The backward is consistent: it uses service + transit to propagate bwd_qtime_dep.
+  //   next.fwd_wct        = fwd_wct + lot_weight[next] * fwd_completion[next]
+  //   next.fwd_qtime_obj  = fwd_qtime_obj
+  //                         + max(0, actual_start - max_qtime[next]) * lot_weight[next]
+  //                         (only if max_qtime[next] > 0)
   // -----------------------------------------------------------------------
   template <bool is_device = true>
   void HDI calculate_forward(lot_schedule_node_t& next,
@@ -149,139 +137,133 @@ class lot_schedule_node_t {
                              const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
     double service_time_next = get_service_time<is_device>(next, vehicle_info);
-    double service_time_this = get_service_time<is_device>(*this, vehicle_info);
 
-    // --- Real pass: WCT ---
-    // fwd_completion = actual_start + service_this (real departure).
     double arrival_real = fwd_completion + travel_time;
-    double actual_start = (next.earliest_time > 0.) ? max(arrival_real, next.earliest_time) : arrival_real;
+    double actual_start =
+      (next.earliest_time > 0.) ? max(arrival_real, next.earliest_time) : arrival_real;
     next.fwd_completion = actual_start + service_time_next;
     next.fwd_wct        = fwd_wct + next.lot_weight * next.fwd_completion;
 
-    // --- Shadow pass: qtime metric ---
-    // fwd_qtime_dep = clamped shadow departure (≤ max_qtime[this]).
-    double shadow_arrival = fwd_qtime_dep + service_time_this + travel_time;
-    double shadow_start   = (next.earliest_time > 0.) ? max(shadow_arrival, next.earliest_time)
-                                                       : shadow_arrival;
-    next.fwd_qtime_excess =
-      fwd_qtime_excess + (next.max_qtime > 0. ? max(0., shadow_start - next.max_qtime) : 0.);
-    // Clamp shadow departure to max_qtime (mirrors TIME clamping departure_forward to window_end).
-    next.fwd_qtime_dep =
-      (next.max_qtime > 0. && shadow_start > next.max_qtime) ? next.max_qtime : shadow_start;
+    // Exact prefix sum — uses max(), so backward can't be O(1); handled by bwd arrays.
+    next.fwd_qtime_obj =
+      fwd_qtime_obj +
+      (next.max_qtime > 0. ? max(0., actual_start - next.max_qtime) * next.lot_weight : 0.);
   }
 
   // -----------------------------------------------------------------------
   // calculate_backward
   // Called as:  this.calculate_backward(prev, travel_time, vehicle_info)
   // arc = travel_time(prev -> this)
-  // Service time of `prev` is fetched from vehicle_info.
   //
-  // WCT backward recurrence (relative to a hypothetical handoff time of 0,
-  // ignoring earliest_time waits — same approximation as TIME dimension):
+  // WCT backward recurrence (same approximation as TIME dimension):
   //   prev.bwd_weight_sum = prev.lot_weight + this.bwd_weight_sum
   //   prev.bwd_wct_rel    = prev.bwd_weight_sum * service_time[prev]
-  //                       + this.bwd_wct_rel
-  //                       + this.bwd_weight_sum * travel_time
+  //                       + this.bwd_wct_rel + this.bwd_weight_sum * travel_time
   //
-  // Qtime backward recurrence:
-  //   limit = this.bwd_qtime_dep - service_time[prev] - travel_time
-  //   prev.bwd_qtime_dep = (prev.max_qtime > 0) ? min(prev.max_qtime, limit) : limit
-  //   prev.bwd_qtime_excess = 0 (one-sided constraint)
+  // Qtime backward:
+  //   step = service_time[prev] + travel_time
+  //   1. Copy this.bwd_qtime_b/w arrays into prev, shifting all b_j by -step.
+  //      (Uniform shift preserves ascending sort order.)
+  //   2. If prev has max_qtime > 0, insert (max_qtime[prev], lot_weight[prev])
+  //      at b_prev = max_qtime[prev] (delta_prev^prev = 0) in sorted position.
   // -----------------------------------------------------------------------
   template <bool is_device = true>
   void HDI calculate_backward(lot_schedule_node_t& prev,
                               double travel_time,
                               const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
-    // --- WCT backward ---
     double service_time_prev = get_service_time<is_device>(prev, vehicle_info);
-    prev.bwd_weight_sum      = prev.lot_weight + bwd_weight_sum;
+
+    // --- WCT backward ---
+    prev.bwd_weight_sum = prev.lot_weight + bwd_weight_sum;
     prev.bwd_wct_rel =
       prev.bwd_weight_sum * service_time_prev + bwd_wct_rel + bwd_weight_sum * travel_time;
 
-    // --- Qtime backward ---
-    // latest start of prev = latest start of this - service[prev] - transit(prev->this)
-    double limit          = bwd_qtime_dep - service_time_prev - travel_time;
-    prev.bwd_qtime_dep    = (prev.max_qtime > 0.) ? min(prev.max_qtime, limit) : limit;
-    prev.bwd_qtime_excess = 0.;
+    // --- Exact qtime backward ---
+    double step            = service_time_prev + travel_time;
+    int n                  = bwd_n_constrained;
+    prev.bwd_n_constrained = n;
+    // Shift all existing breakpoints by -step (uniform; preserves ascending order)
+    for (int j = 0; j < n; j++) {
+      prev.bwd_qtime_b[j] = bwd_qtime_b[j] - step;
+      prev.bwd_qtime_w[j] = bwd_qtime_w[j];
+    }
+    // Insert prev node if it has a qtime constraint and space remains
+    if (prev.max_qtime > 0. && n < MAX_LOT_SCHED_ROUTE_SIZE) {
+      double new_b = prev.max_qtime;  // b_prev^prev = max_qtime[prev] (delta = 0)
+      double new_w = prev.lot_weight;
+      // Find insertion point to keep ascending order
+      int ins = 0;
+      while (ins < n && prev.bwd_qtime_b[ins] <= new_b) {
+        ins++;
+      }
+      // Shift entries right to make room
+      for (int j = n; j > ins; j--) {
+        prev.bwd_qtime_b[j] = prev.bwd_qtime_b[j - 1];
+        prev.bwd_qtime_w[j] = prev.bwd_qtime_w[j - 1];
+      }
+      prev.bwd_qtime_b[ins]  = new_b;
+      prev.bwd_qtime_w[ins]  = new_w;
+      prev.bwd_n_constrained = n + 1;
+    }
   }
 
   // -----------------------------------------------------------------------
   // combine
-  // Returns infeasibility delta at the join point (prev, next) with arc travel_time.
-  // WCT is a pure objective — no infeasibility contribution.
-  // Qtime infeasibility (shadow pass — mirrors TIME dimension combine):
-  //   shadow_arrival = fwd_qtime_dep[prev] + service[prev] + travel_time
-  //   shadow_start   = max(shadow_arrival, earliest_time[next])
-  //   excess         = fwd_excess[prev] + max(0, shadow_start - bwd_qtime_dep[next])
-  //
-  // Using fwd_qtime_dep (clamped) + service + transit for shadow arrival is consistent with
-  // how calculate_forward and calculate_backward propagate the shadow. If fwd_completion were
-  // used instead, the combine would be inconsistent with get_cost when prev has a violation.
-  // bwd_qtime_excess is always 0 (one-sided upper-bound constraint).
+  // LOT_SCHEDULE has no constraints (purely objective). Always returns 0.
   // -----------------------------------------------------------------------
-  static HDI double combine(const lot_schedule_node_t& prev,
-                            const lot_schedule_node_t& next,
-                            const VehicleInfo<f_t>& vehicle_info,
-                            double travel_time) noexcept
+  static HDI double combine([[maybe_unused]] const lot_schedule_node_t& prev,
+                            [[maybe_unused]] const lot_schedule_node_t& next,
+                            [[maybe_unused]] const VehicleInfo<f_t>& vehicle_info,
+                            [[maybe_unused]] double travel_time) noexcept
   {
-    double service_time_prev = get_service_time<true>(prev, vehicle_info);
-    double shadow_arrival    = prev.fwd_qtime_dep + service_time_prev + travel_time;
-    double shadow_start =
-      (next.earliest_time > 0.) ? max(shadow_arrival, next.earliest_time) : shadow_arrival;
-    return prev.fwd_qtime_excess + max(0., shadow_start - next.bwd_qtime_dep);
+    return 0.;
   }
 
   // -----------------------------------------------------------------------
-  // forward/backward excess
+  // forward/backward excess — always 0 (purely objective, no constraints)
   // -----------------------------------------------------------------------
   HDI double forward_excess([[maybe_unused]] const VehicleInfo<f_t>& vehicle_info) const noexcept
   {
-    return fwd_qtime_excess;
+    return 0.;
   }
 
   HDI double backward_excess([[maybe_unused]] const VehicleInfo<f_t>& vehicle_info) const noexcept
   {
-    return bwd_qtime_excess;  // always 0
+    return 0.;
   }
 
   HDI bool forward_feasible([[maybe_unused]] const VehicleInfo<f_t>& vehicle_info,
-                            double weight       = 1.0,
-                            double excess_limit = 0.) const noexcept
+                            [[maybe_unused]] double weight       = 1.0,
+                            [[maybe_unused]] double excess_limit = 0.) const noexcept
   {
-    return forward_excess(vehicle_info) * weight <= excess_limit;
+    return true;
   }
 
   HDI bool backward_feasible([[maybe_unused]] const VehicleInfo<f_t>& vehicle_info,
-                             double weight       = 1.0,
-                             double excess_limit = 0.) const noexcept
+                             [[maybe_unused]] double weight       = 1.0,
+                             [[maybe_unused]] double excess_limit = 0.) const noexcept
   {
-    return backward_excess(vehicle_info) * weight <= excess_limit;
+    return true;
   }
 
   // -----------------------------------------------------------------------
   // get_cost
   // Called with prev_node = node[k-1] (fwd already propagated into `this`).
   //
-  // WCT: the combine invariant gives total WCT at split point k-1 → k:
-  //   handoff_time = this.fwd_completion - service_time[this]  (= actual_start[this])
-  //   total_wct   = prev.fwd_wct
-  //               + handoff_time * this.bwd_weight_sum
-  //               + this.bwd_wct_rel
+  // WCT: total_wct = prev.fwd_wct + handoff_time * bwd_weight_sum + bwd_wct_rel
+  //   handoff_time = actual_start[this] = fwd_completion - service_time[this]
   //
-  // Qtime: total infeasibility = fwd_qtime_excess[this] + max(0, fwd_qtime_dep - bwd_qtime_dep)
-  //   fwd_qtime_excess[this] = violations accumulated in [0..this] (inclusive).
-  //   fwd_qtime_dep[this]    = clamped to max_qtime, so the junction term captures the downstream
-  //                            budget gap: how much too late we're starting relative to what
-  //                            the suffix [this+1..n] requires (via bwd_qtime_dep).
-  //   bwd_qtime_excess = 0 (one-sided upper-bound, no backward violation).
+  // LOT_QTIME_PENALTY (if has_qtime):
+  //   P_suffix(h) = sum_j max(0, h - b_j) * w_j   over bwd_qtime_b/w arrays
+  //   total = prev.fwd_qtime_obj + P_suffix(h)
   // -----------------------------------------------------------------------
   template <bool is_device = true>
   HDI void get_cost(const lot_schedule_node_t& prev_node,
                     const VehicleInfo<f_t, is_device>& vehicle_info,
                     const lot_schedule_dimension_info_t& dim_info,
                     objective_cost_t& obj_cost,
-                    infeasible_cost_t& inf_cost) const noexcept
+                    [[maybe_unused]] infeasible_cost_t& inf_cost) const noexcept
   {
     double service_time = get_service_time<is_device>(*this, vehicle_info);
     double handoff_time = fwd_completion - service_time;  // = actual_start[this]
@@ -289,10 +271,12 @@ class lot_schedule_node_t {
       prev_node.fwd_wct + handoff_time * bwd_weight_sum + bwd_wct_rel;
 
     if (dim_info.has_qtime) {
-      // fwd_qtime_excess already includes violations at this node (accumulated in calculate_forward).
-      // fwd_qtime_dep is clamped, so the junction term does not double-count those violations.
-      inf_cost[dim_t::LOT_SCHEDULE] =
-        fwd_qtime_excess + max(0., fwd_qtime_dep - bwd_qtime_dep);
+      double penalty = 0.;
+      for (int j = 0; j < bwd_n_constrained; j++) {
+        double excess = handoff_time - bwd_qtime_b[j];
+        if (excess > 0.) { penalty += excess * bwd_qtime_w[j]; }
+      }
+      obj_cost[objective_t::LOT_QTIME_PENALTY] = prev_node.fwd_qtime_obj + penalty;
     }
   }
 };

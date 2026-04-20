@@ -70,11 +70,9 @@ __device__ void set_route_data(typename problem_t<i_t, f_t>::view_t const& probl
       ls.node_info[n_nodes_route]      = NodeInfo<>{};  // default = DEPOT type
       ls.earliest_time[n_nodes_route]  = 0.;
       ls.max_qtime[n_nodes_route]      = 0.;
-      // Qtime: trucks always start at t=0; return depot imposes no qtime constraint.
-      ls.fwd_qtime_dep[0]                = 0.;
-      ls.fwd_qtime_excess[0]             = 0.;
-      ls.bwd_qtime_dep[n_nodes_route]    = 1e15;
-      ls.bwd_qtime_excess[n_nodes_route] = 0.;
+      // Qtime objective: zero prefix sum at depot; return depot has empty backward array.
+      ls.fwd_qtime_obj[0]                 = 0.;
+      ls.bwd_n_constrained[n_nodes_route] = 0;
     }
     if (problem.dimensions_info.has_dimension(dim_t::CAP)) {
       route.template get_dim<dim_t::CAP>().max_to_node[0]           = 0;
