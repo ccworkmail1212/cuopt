@@ -446,29 +446,29 @@ cdef class DataModel:
 
     def set_vehicle_order_cost(self, vehicle_id, costs):
         self.vehicle_order_cost[vehicle_id] = type_cast(
-            costs, np.float64, "vehicle_order_cost"
+            costs, np.int32, "vehicle_order_cost"
         )
         cdef uintptr_t c_costs =\
             self.vehicle_order_cost[vehicle_id] \
             .__cuda_array_interface__['data'][0]
         self.c_data_model_view.get().set_vehicle_order_cost(
-            vehicle_id, <const double *> c_costs, len(costs))
+            vehicle_id, <const int *> c_costs, len(costs))
 
     def set_order_lot_weights(self, lot_weights):
-        self.order_lot_weights = type_cast(lot_weights, np.float64, "lot_weights")
+        self.order_lot_weights = type_cast(lot_weights, np.int32, "lot_weights")
         cdef uintptr_t c_lot_weights = (
             self.order_lot_weights.__cuda_array_interface__['data'][0]
         )
         self.c_data_model_view.get().set_order_lot_weights(
-            <const double *> c_lot_weights)
+            <const int *> c_lot_weights)
 
     def set_order_max_qtimes(self, max_qtimes):
-        self.order_max_qtimes = type_cast(max_qtimes, np.float64, "max_qtimes")
+        self.order_max_qtimes = type_cast(max_qtimes, np.int32, "max_qtimes")
         cdef uintptr_t c_max_qtimes = (
             self.order_max_qtimes.__cuda_array_interface__['data'][0]
         )
         self.c_data_model_view.get().set_order_max_qtimes(
-            <const double *> c_max_qtimes)
+            <const int *> c_max_qtimes)
 
     def add_break_dimension(
         self, break_earliest, break_latest, break_duration

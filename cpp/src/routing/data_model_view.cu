@@ -313,12 +313,12 @@ void data_model_view_t<i_t, f_t>::add_order_vehicle_match(const i_t order_id,
 
 template <typename i_t, typename f_t>
 void data_model_view_t<i_t, f_t>::set_vehicle_order_cost(const i_t vehicle_id,
-                                                         double const* costs,
+                                                         i_t const* costs,
                                                          const i_t n_orders)
 {
   cuopt_expects(
     costs != nullptr, error_type_t::ValidationError, "vehicle_order_cost cannot be null");
-  vehicle_order_cost_[vehicle_id] = raft::device_span<double const>(costs, n_orders);
+  vehicle_order_cost_[vehicle_id] = raft::device_span<i_t const>(costs, n_orders);
 }
 
 template <typename i_t, typename f_t>
@@ -651,7 +651,7 @@ data_model_view_t<i_t, f_t>::get_order_vehicle_match() const noexcept
 }
 
 template <typename i_t, typename f_t>
-const std::unordered_map<i_t, raft::device_span<double const>>&
+const std::unordered_map<i_t, raft::device_span<i_t const>>&
 data_model_view_t<i_t, f_t>::get_vehicle_order_cost() const noexcept
 {
   return vehicle_order_cost_;
@@ -699,25 +699,25 @@ raft::device_span<f_t const> data_model_view_t<i_t, f_t>::get_order_prizes() con
 }
 
 template <typename i_t, typename f_t>
-void data_model_view_t<i_t, f_t>::set_order_lot_weights(double const* lot_weights)
+void data_model_view_t<i_t, f_t>::set_order_lot_weights(i_t const* lot_weights)
 {
-  order_lot_weights_ = raft::device_span<double const>(lot_weights, num_orders_);
+  order_lot_weights_ = raft::device_span<i_t const>(lot_weights, num_orders_);
 }
 
 template <typename i_t, typename f_t>
-raft::device_span<double const> data_model_view_t<i_t, f_t>::get_order_lot_weights() const noexcept
+raft::device_span<i_t const> data_model_view_t<i_t, f_t>::get_order_lot_weights() const noexcept
 {
   return order_lot_weights_;
 }
 
 template <typename i_t, typename f_t>
-void data_model_view_t<i_t, f_t>::set_order_max_qtimes(double const* max_qtimes)
+void data_model_view_t<i_t, f_t>::set_order_max_qtimes(i_t const* max_qtimes)
 {
-  order_max_qtimes_ = raft::device_span<double const>(max_qtimes, num_orders_);
+  order_max_qtimes_ = raft::device_span<i_t const>(max_qtimes, num_orders_);
 }
 
 template <typename i_t, typename f_t>
-raft::device_span<double const> data_model_view_t<i_t, f_t>::get_order_max_qtimes() const noexcept
+raft::device_span<i_t const> data_model_view_t<i_t, f_t>::get_order_max_qtimes() const noexcept
 {
   return order_max_qtimes_;
 }

@@ -134,16 +134,16 @@ class mismatch_route_t {
       v.dim_info                               = dim_info_;
       thrust::tie(v.mismatch_forward, sh_ptr)  = wrap_ptr_as_span<i_t>(sh_ptr, n_nodes_route + 1);
       thrust::tie(v.mismatch_backward, sh_ptr) = wrap_ptr_as_span<i_t>(sh_ptr, n_nodes_route + 1);
-      thrust::tie(v.cost_forward, sh_ptr)  = wrap_ptr_as_span<double>(sh_ptr, n_nodes_route + 1);
-      thrust::tie(v.cost_backward, sh_ptr) = wrap_ptr_as_span<double>(sh_ptr, n_nodes_route + 1);
+      thrust::tie(v.cost_forward, sh_ptr)      = wrap_ptr_as_span<i_t>(sh_ptr, n_nodes_route + 1);
+      thrust::tie(v.cost_backward, sh_ptr)     = wrap_ptr_as_span<i_t>(sh_ptr, n_nodes_route + 1);
       return thrust::make_tuple(v, sh_ptr);
     }
 
     mismatch_dimension_info_t dim_info;
     raft::device_span<i_t> mismatch_forward;
     raft::device_span<i_t> mismatch_backward;
-    raft::device_span<double> cost_forward;
-    raft::device_span<double> cost_backward;
+    raft::device_span<i_t> cost_forward;
+    raft::device_span<i_t> cost_backward;
   };
 
   view_t view()
@@ -153,8 +153,8 @@ class mismatch_route_t {
     v.mismatch_forward = raft::device_span<i_t>{mismatch_forward.data(), mismatch_forward.size()};
     v.mismatch_backward =
       raft::device_span<i_t>{mismatch_backward.data(), mismatch_backward.size()};
-    v.cost_forward  = raft::device_span<double>{cost_forward.data(), cost_forward.size()};
-    v.cost_backward = raft::device_span<double>{cost_backward.data(), cost_backward.size()};
+    v.cost_forward  = raft::device_span<i_t>{cost_forward.data(), cost_forward.size()};
+    v.cost_backward = raft::device_span<i_t>{cost_backward.data(), cost_backward.size()};
     return v;
   }
 
@@ -167,18 +167,16 @@ class mismatch_route_t {
   HDI static size_t get_shared_size(i_t route_size,
                                     [[maybe_unused]] mismatch_dimension_info_t dim_info_)
   {
-    // 2 i_t arrays (mismatch_forward, mismatch_backward) + 2 double arrays (cost_forward,
-    // cost_backward)
-    return 2 * raft::alignTo((route_size + 1) * sizeof(i_t), sizeof(double)) +
-           2 * (route_size + 1) * sizeof(double);
+    // 4 i_t arrays: mismatch_forward, mismatch_backward, cost_forward, cost_backward
+    return 4 * static_cast<size_t>(route_size + 1) * sizeof(i_t);
   }
 
   mismatch_dimension_info_t dim_info;
 
   rmm::device_uvector<i_t> mismatch_forward;
   rmm::device_uvector<i_t> mismatch_backward;
-  rmm::device_uvector<double> cost_forward;
-  rmm::device_uvector<double> cost_backward;
+  rmm::device_uvector<i_t> cost_forward;
+  rmm::device_uvector<i_t> cost_backward;
 };
 
 }  // namespace detail

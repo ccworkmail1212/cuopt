@@ -97,11 +97,9 @@ DI node_t<i_t, f_t, REQUEST> create_node(const typename problem_t<i_t, f_t>::vie
     node.lot_schedule_dim.lot_weight = problem.order_info.lot_weights[node_idx];
     node.lot_schedule_dim.node_info  = node_info;
     node.lot_schedule_dim.earliest_time =
-      !problem.order_info.earliest_time.empty()
-        ? static_cast<double>(problem.order_info.earliest_time[node_idx])
-        : 0.;
+      !problem.order_info.earliest_time.empty() ? problem.order_info.earliest_time[node_idx] : 0;
     node.lot_schedule_dim.max_qtime =
-      !problem.order_info.lot_max_qtimes.empty() ? problem.order_info.lot_max_qtimes[node_idx] : 0.;
+      !problem.order_info.lot_max_qtimes.empty() ? problem.order_info.lot_max_qtimes[node_idx] : 0;
   }
 
   node.request = request_info_t<i_t, REQUEST>(node_info, brother_info);
@@ -174,15 +172,14 @@ constexpr node_t<i_t, f_t, REQUEST> create_node(const problem_t<i_t, f_t>* probl
 
   if (problem->dimensions_info.has_dimension(dim_t::LOT_SCHEDULE) &&
       !problem->order_info_h.lot_weights.empty()) {
-    node.lot_schedule_dim.lot_weight = problem->order_info_h.lot_weights[node_idx];
-    node.lot_schedule_dim.node_info  = node_info;
-    node.lot_schedule_dim.earliest_time =
-      !problem->order_info_h.earliest_time.empty()
-        ? static_cast<double>(problem->order_info_h.earliest_time[node_idx])
-        : 0.;
-    node.lot_schedule_dim.max_qtime = !problem->order_info_h.lot_max_qtimes.empty()
-                                        ? problem->order_info_h.lot_max_qtimes[node_idx]
-                                        : 0.;
+    node.lot_schedule_dim.lot_weight    = problem->order_info_h.lot_weights[node_idx];
+    node.lot_schedule_dim.node_info     = node_info;
+    node.lot_schedule_dim.earliest_time = !problem->order_info_h.earliest_time.empty()
+                                            ? problem->order_info_h.earliest_time[node_idx]
+                                            : 0;
+    node.lot_schedule_dim.max_qtime     = !problem->order_info_h.lot_max_qtimes.empty()
+                                            ? problem->order_info_h.lot_max_qtimes[node_idx]
+                                            : 0;
   }
 
   node.request = request_info_t<i_t, REQUEST>(node_info, brother_info);
@@ -270,10 +267,10 @@ DI node_t<i_t, f_t, REQUEST> create_depot_node(const typename problem_t<i_t, f_t
   });
 
   node.prize_dim.prize                    = 0.;
-  node.lot_schedule_dim.lot_weight        = 0.;
+  node.lot_schedule_dim.lot_weight        = 0;
   node.lot_schedule_dim.node_info         = NodeInfo<i_t>{};  // default = DEPOT type
-  node.lot_schedule_dim.fwd_completion    = earliest;
-  node.lot_schedule_dim.fwd_qtime_obj     = 0.;
+  node.lot_schedule_dim.fwd_completion    = static_cast<int32_t>(earliest);
+  node.lot_schedule_dim.fwd_qtime_obj     = 0;
   node.lot_schedule_dim.bwd_n_constrained = 0;
   node.request                            = request_info_t<i_t, REQUEST>(node_info, brother_info);
   return node;
@@ -311,10 +308,10 @@ constexpr node_t<i_t, f_t, REQUEST> create_depot_node(const problem_t<i_t, f_t>*
   });
 
   node.prize_dim.prize                    = 0.;
-  node.lot_schedule_dim.lot_weight        = 0.;
+  node.lot_schedule_dim.lot_weight        = 0;
   node.lot_schedule_dim.node_info         = NodeInfo<i_t>{};  // default = DEPOT type
-  node.lot_schedule_dim.fwd_completion    = earliest;
-  node.lot_schedule_dim.fwd_qtime_obj     = 0.;
+  node.lot_schedule_dim.fwd_completion    = static_cast<int32_t>(earliest);
+  node.lot_schedule_dim.fwd_qtime_obj     = 0;
   node.lot_schedule_dim.bwd_n_constrained = 0;
   node.request                            = request_info_t<i_t, REQUEST>(node_info, brother_info);
   return node;

@@ -287,15 +287,15 @@ class data_model_view_t {
    *        that pair is an error.
    *
    * @param vehicle_id  vehicle id for which costs are specified
-   * @param costs       device memory pointer to n_orders double values
+   * @param costs       device memory pointer to n_orders integer values
    * @param n_orders    number of orders (must match the problem size)
    */
-  void set_vehicle_order_cost(const i_t vehicle_id, double const* costs, const i_t n_orders);
+  void set_vehicle_order_cost(const i_t vehicle_id, i_t const* costs, const i_t n_orders);
 
   /**
    * @brief Get the vehicle order cost map
    */
-  const std::unordered_map<i_t, raft::device_span<double const>>& get_vehicle_order_cost()
+  const std::unordered_map<i_t, raft::device_span<i_t const>>& get_vehicle_order_cost()
     const noexcept;
 
   /**
@@ -370,9 +370,9 @@ class data_model_view_t {
    *        Weight controls the priority of each lot in the weighted completion
    *        time and qtime penalty objectives.
    *
-   * @param[in] lot_weights Per-order weight array (double, size = num_orders)
+   * @param[in] lot_weights Per-order weight array (integer, size = num_orders)
    */
-  void set_order_lot_weights(double const* lot_weights);
+  void set_order_lot_weights(i_t const* lot_weights);
 
   /**
    * @brief Add precedence constraints for a given order.
@@ -595,22 +595,22 @@ class data_model_view_t {
    * @brief Get per-lot weights set via set_order_lot_weights
    * @return raft::device_span<double const>
    */
-  raft::device_span<double const> get_order_lot_weights() const noexcept;
+  raft::device_span<i_t const> get_order_lot_weights() const noexcept;
 
   /**
    * @brief Set per-lot maximum queue time (qtime) constraint.
    *        Each lot must begin processing within max_qtime[k] of t=0.
    *        Violation is treated as infeasibility: penalty = max(0, start_k - max_qtime_k).
    *
-   * @param[in] max_qtimes Per-order qtime deadline array (double, size = num_orders)
+   * @param[in] max_qtimes Per-order qtime deadline array (integer, size = num_orders)
    */
-  void set_order_max_qtimes(double const* max_qtimes);
+  void set_order_max_qtimes(i_t const* max_qtimes);
 
   /**
    * @brief Get per-lot max qtimes set via set_order_max_qtimes
-   * @return raft::device_span<double const>
+   * @return raft::device_span<i_t const>
    */
-  raft::device_span<double const> get_order_max_qtimes() const noexcept;
+  raft::device_span<i_t const> get_order_max_qtimes() const noexcept;
 
   /**
    * @brief Get pickup delivery pairs
@@ -675,8 +675,8 @@ class data_model_view_t {
   detail::order_time_window_t<i_t, f_t> order_tw_{};
 
   raft::device_span<f_t const> order_prizes_;
-  raft::device_span<double const> order_lot_weights_;
-  raft::device_span<double const> order_max_qtimes_;
+  raft::device_span<i_t const> order_lot_weights_;
+  raft::device_span<i_t const> order_max_qtimes_;
 
   i_t const* start_locations_{nullptr};
   i_t const* return_locations_{nullptr};
@@ -684,7 +684,7 @@ class data_model_view_t {
   bool const* skip_first_trip_{nullptr};
   std::unordered_map<i_t, raft::device_span<i_t const>> vehicle_order_match_;
   std::unordered_map<i_t, raft::device_span<i_t const>> order_vehicle_match_;
-  std::unordered_map<i_t, raft::device_span<double const>> vehicle_order_cost_;
+  std::unordered_map<i_t, raft::device_span<i_t const>> vehicle_order_cost_;
   std::unordered_map<i_t, raft::device_span<i_t const>> order_service_times_;
   objective_t const* objective_{};
   f_t const* objective_weights_{};

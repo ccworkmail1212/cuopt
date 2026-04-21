@@ -20,10 +20,10 @@ class mismatch_node_t {
   i_t mismatch_forward = 0;
   //! Infeasible vehicle-order assignment count accumulated backward
   i_t mismatch_backward = 0;
-  //! Finite vehicle-order assignment costs accumulated forward
-  double cost_forward = 0.;
-  //! Finite vehicle-order assignment costs accumulated backward
-  double cost_backward = 0.;
+  //! Finite vehicle-order assignment costs accumulated forward (integer-valued)
+  i_t cost_forward = 0;
+  //! Finite vehicle-order assignment costs accumulated backward (integer-valued)
+  i_t cost_backward = 0;
 
   /*! \brief { Calculate next node forward state based on arc from this->next.
                If arc is infinite, increment mismatch; otherwise accumulate cost. } */
@@ -38,7 +38,7 @@ class mismatch_node_t {
       next.cost_forward     = cost_forward;
     } else {
       next.mismatch_forward = mismatch_forward;
-      next.cost_forward     = cost_forward + arc;
+      next.cost_forward     = cost_forward + static_cast<i_t>(arc);
     }
   }
 
@@ -55,7 +55,7 @@ class mismatch_node_t {
       prev.cost_backward     = cost_backward;
     } else {
       prev.mismatch_backward = mismatch_backward;
-      prev.cost_backward     = cost_backward + arc;
+      prev.cost_backward     = cost_backward + static_cast<i_t>(arc);
     }
   }
 

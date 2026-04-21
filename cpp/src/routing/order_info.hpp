@@ -85,8 +85,8 @@ class order_info_t {
     std::vector<i_t> latest_time;
     std::vector<demand_i_t> demand;
     std::vector<f_t> prizes;
-    std::vector<double> lot_weights;
-    std::vector<double> lot_max_qtimes;
+    std::vector<i_t> lot_weights;
+    std::vector<i_t> lot_max_qtimes;
     std::vector<i_t> order_locations;
     bool depot_included;
   };
@@ -118,8 +118,8 @@ class order_info_t {
     raft::device_span<const i_t> earliest_time;
     raft::device_span<const i_t> latest_time;
     raft::device_span<const f_t> prizes;
-    raft::device_span<const double> lot_weights;
-    raft::device_span<const double> lot_max_qtimes;
+    raft::device_span<const i_t> lot_weights;
+    raft::device_span<const i_t> lot_max_qtimes;
   };
 
   view_t view() const
@@ -137,9 +137,9 @@ class order_info_t {
       raft::device_span<const i_t>{v_earliest_time_.data(), v_earliest_time_.size()};
     v.latest_time = raft::device_span<const i_t>{v_latest_time_.data(), v_latest_time_.size()};
     v.prizes      = raft::device_span<const f_t>{v_prizes_.data(), v_prizes_.size()};
-    v.lot_weights = raft::device_span<const double>{v_lot_weights_.data(), v_lot_weights_.size()};
+    v.lot_weights = raft::device_span<const i_t>{v_lot_weights_.data(), v_lot_weights_.size()};
     v.lot_max_qtimes =
-      raft::device_span<const double>{v_lot_max_qtimes_.data(), v_lot_max_qtimes_.size()};
+      raft::device_span<const i_t>{v_lot_max_qtimes_.data(), v_lot_max_qtimes_.size()};
     v.nrequests = get_num_requests();
     return v;
   }
@@ -155,8 +155,8 @@ class order_info_t {
   rmm::device_uvector<i_t> v_earliest_time_;
   rmm::device_uvector<i_t> v_latest_time_;
   rmm::device_uvector<f_t> v_prizes_;
-  rmm::device_uvector<double> v_lot_weights_;
-  rmm::device_uvector<double> v_lot_max_qtimes_;
+  rmm::device_uvector<i_t> v_lot_weights_;
+  rmm::device_uvector<i_t> v_lot_max_qtimes_;
 };
 
 /**

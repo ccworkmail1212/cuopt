@@ -58,20 +58,20 @@ __device__ void set_route_data(typename problem_t<i_t, f_t>::view_t const& probl
     route.template get_dim<dim_t::DIST>().distance_forward[0]              = 0.f;
     if (problem.dimensions_info.has_dimension(dim_t::LOT_SCHEDULE)) {
       auto& ls                         = route.template get_dim<dim_t::LOT_SCHEDULE>();
-      ls.fwd_completion[0]             = earliest;
-      ls.fwd_wct[0]                    = 0.;
-      ls.bwd_weight_sum[n_nodes_route] = 0.;
-      ls.bwd_wct_rel[n_nodes_route]    = 0.;
-      ls.lot_weight[0]                 = 0.;
+      ls.fwd_completion[0]             = static_cast<int32_t>(earliest);
+      ls.fwd_wct[0]                    = 0;
+      ls.bwd_weight_sum[n_nodes_route] = 0;
+      ls.bwd_wct_rel[n_nodes_route]    = 0;
+      ls.lot_weight[0]                 = 0;
       ls.node_info[0]                  = NodeInfo<>{};  // default = DEPOT type
-      ls.earliest_time[0]              = 0.;
-      ls.max_qtime[0]                  = 0.;
-      ls.lot_weight[n_nodes_route]     = 0.;
+      ls.earliest_time[0]              = 0;
+      ls.max_qtime[0]                  = 0;
+      ls.lot_weight[n_nodes_route]     = 0;
       ls.node_info[n_nodes_route]      = NodeInfo<>{};  // default = DEPOT type
-      ls.earliest_time[n_nodes_route]  = 0.;
-      ls.max_qtime[n_nodes_route]      = 0.;
+      ls.earliest_time[n_nodes_route]  = 0;
+      ls.max_qtime[n_nodes_route]      = 0;
       // Qtime objective: zero prefix sum at depot; return depot has empty backward array.
-      ls.fwd_qtime_obj[0]                 = 0.;
+      ls.fwd_qtime_obj[0]                 = 0;
       ls.bwd_n_constrained[n_nodes_route] = 0;
     }
     if (problem.dimensions_info.has_dimension(dim_t::CAP)) {

@@ -64,9 +64,9 @@ TEST(lot_scheduling, correct_order_and_wct)
   raft::handle_t handle;
   auto stream = handle.get_stream();
 
-  std::vector<int> order_locations = {1, 2};      // lot_0 at loc 1, lot_1 at loc 2
-  std::vector<int> service_times   = {3, 4};      // s_0=3, s_1=4
-  std::vector<double> lot_weights  = {2.0, 1.0};  // w_0=2, w_1=1
+  std::vector<int> order_locations = {1, 2};  // lot_0 at loc 1, lot_1 at loc 2
+  std::vector<int> service_times   = {3, 4};  // s_0=3, s_1=4
+  std::vector<int> lot_weights     = {2, 1};  // w_0=2, w_1=1
 
   auto v_cost_matrix         = cuopt::device_copy(k_cost_matrix, stream);
   auto v_transit_time_matrix = cuopt::device_copy(k_transit_times, stream);
@@ -126,9 +126,9 @@ TEST(lot_scheduling, high_weight_lot_served_first)
   raft::handle_t handle;
   auto stream = handle.get_stream();
 
-  std::vector<int> order_locations = {1, 2};      // lot_0 at loc 1, lot_1 at loc 2
-  std::vector<int> service_times   = {4, 1};      // s_0=4, s_1=1
-  std::vector<double> lot_weights  = {1.0, 3.0};  // w_0=1, w_1=3
+  std::vector<int> order_locations = {1, 2};  // lot_0 at loc 1, lot_1 at loc 2
+  std::vector<int> service_times   = {4, 1};  // s_0=4, s_1=1
+  std::vector<int> lot_weights     = {1, 3};  // w_0=1, w_1=3
 
   auto v_cost_matrix         = cuopt::device_copy(k_cost_matrix, stream);
   auto v_transit_time_matrix = cuopt::device_copy(k_transit_times, stream);
@@ -211,7 +211,7 @@ TEST(lot_scheduling, ten_lots_four_tools_consistency)
   // lot i is at location i+1
   std::vector<int> order_locations = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
   std::vector<int> service_times   = {2, 5, 1, 3, 2, 4, 3, 1, 2, 3};
-  std::vector<double> lot_weights  = {3., 1., 4., 2., 5., 1., 3., 2., 4., 2.};
+  std::vector<int> lot_weights     = {3, 1, 4, 2, 5, 1, 3, 2, 4, 2};
 
   auto v_cost_matrix         = cuopt::device_copy(cost_matrix, stream);
   auto v_transit_time_matrix = cuopt::device_copy(transit_matrix, stream);
@@ -292,8 +292,8 @@ TEST(lot_scheduling, qtime_feasible_loose_constraints)
 
   std::vector<int> order_locations = {1, 2};
   std::vector<int> service_times   = {3, 4};
-  std::vector<double> lot_weights  = {2.0, 1.0};
-  std::vector<double> max_qtimes   = {100., 100.};  // very loose — no violation expected
+  std::vector<int> lot_weights     = {2, 1};
+  std::vector<int> max_qtimes      = {100, 100};  // very loose — no violation expected
 
   auto v_cost_matrix         = cuopt::device_copy(k_cost_matrix, stream);
   auto v_transit_time_matrix = cuopt::device_copy(k_transit_times, stream);
@@ -370,10 +370,10 @@ TEST(lot_scheduling, qtime_nontrivial_ten_lots_four_tools)
 
   std::vector<int> order_locations = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
   std::vector<int> service_times   = {2, 5, 1, 3, 2, 4, 3, 1, 2, 3};
-  std::vector<double> lot_weights  = {3., 1., 4., 2., 5., 1., 3., 2., 4., 2.};
+  std::vector<int> lot_weights     = {3, 1, 4, 2, 5, 1, 3, 2, 4, 2};
   // Tight qtimes only on lot1 and lot5 (low-weight lots the unconstrained
   // optimal schedules last at t=6 and t=7 respectively).  All others loose.
-  std::vector<double> max_qtimes = {100., 4., 100., 100., 100., 4., 100., 100., 100., 100.};
+  std::vector<int> max_qtimes = {100, 4, 100, 100, 100, 4, 100, 100, 100, 100};
 
   auto v_cost_matrix         = cuopt::device_copy(cost_matrix, stream);
   auto v_transit_time_matrix = cuopt::device_copy(transit_matrix, stream);
@@ -485,9 +485,9 @@ TEST(lot_scheduling, arrival_time_nontrivial_ten_lots_four_tools)
 
   std::vector<int> order_locations = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
   std::vector<int> service_times   = {2, 5, 1, 3, 2, 4, 3, 1, 2, 3};
-  std::vector<double> lot_weights  = {3., 1., 4., 2., 5., 1., 3., 2., 4., 2.};
+  std::vector<int> lot_weights     = {3, 1, 4, 2, 5, 1, 3, 2, 4, 2};
   // Qtime: same tight deadlines as TEST 5
-  std::vector<double> max_qtimes = {100., 4., 100., 100., 100., 4., 100., 100., 100., 100.};
+  std::vector<int> max_qtimes = {100, 4, 100, 100, 100, 4, 100, 100, 100, 100};
   // Arrival times: lot4 arrives at t=4, lot2 arrives at t=3; others immediate.
   std::vector<int> earliest = {0, 0, 3, 0, 4, 0, 0, 0, 0, 0};
   std::vector<int> latest = {10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000};
@@ -602,7 +602,7 @@ TEST(lot_scheduling, arrival_time_flips_order)
 
   std::vector<int> order_locations = {1, 2};
   std::vector<int> service_times   = {1, 1};
-  std::vector<double> lot_weights  = {2.0, 1.0};
+  std::vector<int> lot_weights     = {2, 1};
   // lot_0 arrives at t=7; lot_1 arrives immediately (t=0)
   std::vector<int> earliest = {7, 0};
   std::vector<int> latest   = {10000, 10000};  // non-binding upper bound
@@ -673,11 +673,11 @@ TEST(lot_scheduling, vehicle_order_cost_steers_tool_assignment)
 
   std::vector<int> order_locations = {1, 2};
   std::vector<int> service_times   = {1, 1};
-  std::vector<double> lot_weights  = {1.0, 1.0};
+  std::vector<int> lot_weights     = {1, 1};
 
   // tool_0 prefers lot_0, tool_1 prefers lot_1
-  std::vector<double> costs_tool0 = {0.0, 1000.0};
-  std::vector<double> costs_tool1 = {1000.0, 0.0};
+  std::vector<int> costs_tool0 = {0, 1000};
+  std::vector<int> costs_tool1 = {1000, 0};
 
   auto v_cost_matrix         = cuopt::device_copy(k_cost_matrix, stream);
   auto v_transit_time_matrix = cuopt::device_copy(k_transit_times, stream);
@@ -766,10 +766,10 @@ TEST(lot_scheduling, ten_lots_four_tools_with_events)
 
   std::vector<int> order_locations = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
   std::vector<int> service_times   = {2, 5, 1, 3, 2, 4, 3, 1, 2, 3};
-  std::vector<double> lot_weights  = {3., 1., 4., 2., 5., 1., 3., 2., 4., 2.};
+  std::vector<int> lot_weights     = {3, 1, 4, 2, 5, 1, 3, 2, 4, 2};
   // Same qtime and arrival constraints as TEST 6
-  std::vector<double> max_qtimes = {100., 4., 100., 100., 100., 4., 100., 100., 100., 100.};
-  std::vector<int> earliest      = {0, 0, 3, 0, 4, 0, 0, 0, 0, 0};
+  std::vector<int> max_qtimes = {100, 4, 100, 100, 100, 4, 100, 100, 100, 100};
+  std::vector<int> earliest   = {0, 0, 3, 0, 4, 0, 0, 0, 0, 0};
   std::vector<int> latest = {10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000};
 
   // One break per vehicle, exact time t=10, at any of the existing lot locations
@@ -906,7 +906,7 @@ TEST(lot_scheduling, idle_time_overrides_weight_priority)
 
   std::vector<int> order_locations = {1, 2, 3};
   std::vector<int> service_times   = {2, 1, 2};
-  std::vector<double> lot_weights  = {4., 1., 4.};
+  std::vector<int> lot_weights     = {4, 1, 4};
 
   auto v_cost_matrix         = cuopt::device_copy(cost_matrix, stream);
   auto v_transit_time_matrix = cuopt::device_copy(transit_matrix, stream);
@@ -1003,7 +1003,7 @@ TEST(lot_scheduling, events_disrupt_scheduling)
 
   std::vector<int> order_locations = {1, 2, 3};
   std::vector<int> service_times   = {2, 1, 2};
-  std::vector<double> lot_weights  = {3., 1., 3.};
+  std::vector<int> lot_weights     = {3, 1, 3};
 
   // One break per vehicle: earliest=latest=4, duration=5
   // Break can occur at any existing lot location (no dedicated break node)

@@ -146,7 +146,7 @@ void populate_vehicle_order_cost(data_model_view_t<i_t, f_t> const& data_model,
                   "vehicle_order_cost size must equal number of orders");
     for (i_t order_id = 0; order_id < n_orders; ++order_id) {
       double existing = order_costs_h[vehicle_id * n_orders + order_id];
-      double new_cost = costs_h[order_id];
+      double new_cost = static_cast<double>(costs_h[order_id]);
       cuopt_expects(!(std::isinf(existing) && std::isfinite(new_cost)),
                     error_type_t::ValidationError,
                     "Inconsistency: vehicle_order_match marks pair as infeasible but "

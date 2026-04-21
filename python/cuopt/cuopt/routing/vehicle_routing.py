@@ -997,9 +997,9 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         ----------
         vehicle_id : int
             Vehicle (tool) id for which costs are being set
-        costs : cudf.Series dtype - float64
-            Assignment costs of size number of orders. costs[i] is the
-            cost incurred when vehicle_id processes order i.
+        costs : cudf.Series dtype - int32
+            Integer assignment costs of size number of orders. costs[i] is
+            the cost incurred when vehicle_id processes order i.
 
         Note: A user can set this multiple times. However, if it is
               set more than once for the same vehicle, the costs list will
@@ -1011,8 +1011,8 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         >>> n_vehicles = 2
         >>> d = routing.DataModel(n_locations, n_vehicles)
         >>> # vehicle 0 prefers orders 0,1; vehicle 1 prefers orders 2,3
-        >>> d.set_vehicle_order_cost(0, cudf.Series([0., 0., 10., 10.]))
-        >>> d.set_vehicle_order_cost(1, cudf.Series([10., 10., 0., 0.]))
+        >>> d.set_vehicle_order_cost(0, cudf.Series([0, 0, 10, 10], dtype="int32"))
+        >>> d.set_vehicle_order_cost(1, cudf.Series([10, 10, 0, 0], dtype="int32"))
         >>> cuopt_solution = routing.Solve(d)
         """
 
@@ -1034,16 +1034,16 @@ class DataModel(vehicle_routing_wrapper.DataModel):
 
         Parameters
         ----------
-        lot_weights : cudf.Series dtype - float64
-            Non-negative weights of size number of orders. The depot order
-            should have weight 0.
+        lot_weights : cudf.Series dtype - int32
+            Non-negative integer weights of size number of orders. The depot
+            order should have weight 0.
 
         Examples
         --------
         >>> n_locations = 4
         >>> n_vehicles = 2
         >>> d = routing.DataModel(n_locations, n_vehicles)
-        >>> d.set_order_lot_weights(cudf.Series([0., 2., 1., 3.]))
+        >>> d.set_order_lot_weights(cudf.Series([0, 2, 1, 3], dtype="int32"))
         >>> cuopt_solution = routing.Solve(d)
         """
 
@@ -1066,17 +1066,17 @@ class DataModel(vehicle_routing_wrapper.DataModel):
 
         Parameters
         ----------
-        max_qtimes : cudf.Series dtype - float64
-            Non-negative max queue times of size number of orders. Use a
-            large value (e.g. 1e15) to indicate no constraint for a given
-            order. The depot order should have a large value.
+        max_qtimes : cudf.Series dtype - int32
+            Non-negative integer max queue times of size number of orders.
+            Use a large value (e.g. 2147483647) to indicate no constraint
+            for a given order. The depot order should have a large value.
 
         Examples
         --------
         >>> n_locations = 4
         >>> n_vehicles = 2
         >>> d = routing.DataModel(n_locations, n_vehicles)
-        >>> d.set_order_max_qtimes(cudf.Series([1e15, 4., 1e15, 4.]))
+        >>> d.set_order_max_qtimes(cudf.Series([2147483647, 4, 2147483647, 4], dtype="int32"))
         >>> cuopt_solution = routing.Solve(d)
         """
 

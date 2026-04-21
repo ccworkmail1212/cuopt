@@ -88,10 +88,10 @@ cdef extern from "cuopt/routing/solve.hpp" namespace "cuopt::routing":
             const int vehicle_id) except +
         void set_vehicle_order_cost(
             const int vehicle_id,
-            const double* costs,
+            const int* costs,
             const int n_orders) except +
-        void set_order_lot_weights(const double* lot_weights) except +
-        void set_order_max_qtimes(const double* max_qtimes) except +
+        void set_order_lot_weights(const int* lot_weights) except +
+        void set_order_max_qtimes(const int* max_qtimes) except +
         void add_break_dimension(
             const i_t *break_earliest,
             const i_t *break_latest,

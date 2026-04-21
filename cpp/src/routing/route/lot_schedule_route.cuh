@@ -20,6 +20,8 @@
 
 #include <thrust/tuple.h>
 
+#include <cstdint>
+
 namespace cuopt {
 namespace routing {
 namespace detail {
@@ -174,10 +176,11 @@ class lot_schedule_route_t {
                          [[maybe_unused]] infeasible_cost_t& inf_cost) const noexcept
     {
       // At the return depot bwd_weight_sum=0 and bwd_wct_rel=0, so total WCT = fwd_wct[n].
-      obj_cost[objective_t::WEIGHTED_COMPLETION_TIME] = fwd_wct[n_nodes_route];
+      obj_cost[objective_t::WEIGHTED_COMPLETION_TIME] = static_cast<double>(fwd_wct[n_nodes_route]);
       // fwd_qtime_obj[n] = exact total qtime penalty accumulated over all lots.
       if (dim_info.has_qtime) {
-        obj_cost[objective_t::LOT_QTIME_PENALTY] = fwd_qtime_obj[n_nodes_route];
+        obj_cost[objective_t::LOT_QTIME_PENALTY] =
+          static_cast<double>(fwd_qtime_obj[n_nodes_route]);
       }
     }
 
@@ -186,40 +189,40 @@ class lot_schedule_route_t {
     {
       view_t v;
       v.dim_info = dim_info_;
-      // Layout (doubles first for alignment, then int arrays):
-      //   lot_weight | earliest_time | max_qtime | fwd_completion | fwd_wct
-      //   | bwd_weight_sum | bwd_wct_rel | fwd_qtime_obj
-      //   | bwd_qtime_b (stride * K) | bwd_qtime_w (stride * K)
-      //   | bwd_n_constrained (int, stride) | node_info (NodeInfo<i_t>, stride)
+      // All fields are int32_t (4-byte aligned):
+      //   fwd_wct | bwd_wct_rel | fwd_qtime_obj | lot_weight | earliest_time
+      //   | max_qtime | fwd_completion | bwd_weight_sum
+      //   | bwd_qtime_b (stride*K) | bwd_qtime_w (stride*K)
+      //   | bwd_n_constrained (int) | node_info (NodeInfo<i_t>)
       i_t stride                               = n_nodes_route + 1;
       i_t* sh_ptr                              = shmem;
-      thrust::tie(v.lot_weight, sh_ptr)        = wrap_ptr_as_span<double>(sh_ptr, stride);
-      thrust::tie(v.earliest_time, sh_ptr)     = wrap_ptr_as_span<double>(sh_ptr, stride);
-      thrust::tie(v.max_qtime, sh_ptr)         = wrap_ptr_as_span<double>(sh_ptr, stride);
-      thrust::tie(v.fwd_completion, sh_ptr)    = wrap_ptr_as_span<double>(sh_ptr, stride);
-      thrust::tie(v.fwd_wct, sh_ptr)           = wrap_ptr_as_span<double>(sh_ptr, stride);
-      thrust::tie(v.bwd_weight_sum, sh_ptr)    = wrap_ptr_as_span<double>(sh_ptr, stride);
-      thrust::tie(v.bwd_wct_rel, sh_ptr)       = wrap_ptr_as_span<double>(sh_ptr, stride);
-      thrust::tie(v.fwd_qtime_obj, sh_ptr)     = wrap_ptr_as_span<double>(sh_ptr, stride);
-      thrust::tie(v.bwd_qtime_b, sh_ptr)       = wrap_ptr_as_span<double>(sh_ptr, stride * K);
-      thrust::tie(v.bwd_qtime_w, sh_ptr)       = wrap_ptr_as_span<double>(sh_ptr, stride * K);
+      thrust::tie(v.fwd_wct, sh_ptr)           = wrap_ptr_as_span<int32_t>(sh_ptr, stride);
+      thrust::tie(v.bwd_wct_rel, sh_ptr)       = wrap_ptr_as_span<int32_t>(sh_ptr, stride);
+      thrust::tie(v.fwd_qtime_obj, sh_ptr)     = wrap_ptr_as_span<int32_t>(sh_ptr, stride);
+      thrust::tie(v.lot_weight, sh_ptr)        = wrap_ptr_as_span<int32_t>(sh_ptr, stride);
+      thrust::tie(v.earliest_time, sh_ptr)     = wrap_ptr_as_span<int32_t>(sh_ptr, stride);
+      thrust::tie(v.max_qtime, sh_ptr)         = wrap_ptr_as_span<int32_t>(sh_ptr, stride);
+      thrust::tie(v.fwd_completion, sh_ptr)    = wrap_ptr_as_span<int32_t>(sh_ptr, stride);
+      thrust::tie(v.bwd_weight_sum, sh_ptr)    = wrap_ptr_as_span<int32_t>(sh_ptr, stride);
+      thrust::tie(v.bwd_qtime_b, sh_ptr)       = wrap_ptr_as_span<int32_t>(sh_ptr, stride * K);
+      thrust::tie(v.bwd_qtime_w, sh_ptr)       = wrap_ptr_as_span<int32_t>(sh_ptr, stride * K);
       thrust::tie(v.bwd_n_constrained, sh_ptr) = wrap_ptr_as_span<int>(sh_ptr, stride);
       thrust::tie(v.node_info, sh_ptr)         = wrap_ptr_as_span<NodeInfo<i_t>>(sh_ptr, stride);
       return thrust::make_tuple(v, sh_ptr);
     }
 
     lot_schedule_dimension_info_t dim_info;
-    raft::device_span<double> lot_weight;
+    raft::device_span<int32_t> lot_weight;
     raft::device_span<NodeInfo<i_t>> node_info;
-    raft::device_span<double> earliest_time;
-    raft::device_span<double> max_qtime;
-    raft::device_span<double> fwd_completion;
-    raft::device_span<double> fwd_wct;
-    raft::device_span<double> bwd_weight_sum;
-    raft::device_span<double> bwd_wct_rel;
-    raft::device_span<double> fwd_qtime_obj;
-    raft::device_span<double> bwd_qtime_b;  // size: stride * K
-    raft::device_span<double> bwd_qtime_w;  // size: stride * K
+    raft::device_span<int32_t> earliest_time;
+    raft::device_span<int32_t> max_qtime;
+    raft::device_span<int32_t> fwd_completion;
+    raft::device_span<int32_t> fwd_wct;
+    raft::device_span<int32_t> bwd_weight_sum;
+    raft::device_span<int32_t> bwd_wct_rel;
+    raft::device_span<int32_t> fwd_qtime_obj;
+    raft::device_span<int32_t> bwd_qtime_b;  // size: stride * K
+    raft::device_span<int32_t> bwd_qtime_w;  // size: stride * K
     raft::device_span<int> bwd_n_constrained;
   };
 
@@ -228,17 +231,17 @@ class lot_schedule_route_t {
   {
     view_t v;
     v.dim_info       = dim_info;
-    v.lot_weight     = raft::device_span<double>{lot_weight.data(), lot_weight.size()};
+    v.lot_weight     = raft::device_span<int32_t>{lot_weight.data(), lot_weight.size()};
     v.node_info      = raft::device_span<NodeInfo<i_t>>{node_info.data(), node_info.size()};
-    v.earliest_time  = raft::device_span<double>{earliest_time.data(), earliest_time.size()};
-    v.max_qtime      = raft::device_span<double>{max_qtime.data(), max_qtime.size()};
-    v.fwd_completion = raft::device_span<double>{fwd_completion.data(), fwd_completion.size()};
-    v.fwd_wct        = raft::device_span<double>{fwd_wct.data(), fwd_wct.size()};
-    v.bwd_weight_sum = raft::device_span<double>{bwd_weight_sum.data(), bwd_weight_sum.size()};
-    v.bwd_wct_rel    = raft::device_span<double>{bwd_wct_rel.data(), bwd_wct_rel.size()};
-    v.fwd_qtime_obj  = raft::device_span<double>{fwd_qtime_obj.data(), fwd_qtime_obj.size()};
-    v.bwd_qtime_b    = raft::device_span<double>{bwd_qtime_b.data(), bwd_qtime_b.size()};
-    v.bwd_qtime_w    = raft::device_span<double>{bwd_qtime_w.data(), bwd_qtime_w.size()};
+    v.earliest_time  = raft::device_span<int32_t>{earliest_time.data(), earliest_time.size()};
+    v.max_qtime      = raft::device_span<int32_t>{max_qtime.data(), max_qtime.size()};
+    v.fwd_completion = raft::device_span<int32_t>{fwd_completion.data(), fwd_completion.size()};
+    v.fwd_wct        = raft::device_span<int32_t>{fwd_wct.data(), fwd_wct.size()};
+    v.bwd_weight_sum = raft::device_span<int32_t>{bwd_weight_sum.data(), bwd_weight_sum.size()};
+    v.bwd_wct_rel    = raft::device_span<int32_t>{bwd_wct_rel.data(), bwd_wct_rel.size()};
+    v.fwd_qtime_obj  = raft::device_span<int32_t>{fwd_qtime_obj.data(), fwd_qtime_obj.size()};
+    v.bwd_qtime_b    = raft::device_span<int32_t>{bwd_qtime_b.data(), bwd_qtime_b.size()};
+    v.bwd_qtime_w    = raft::device_span<int32_t>{bwd_qtime_w.data(), bwd_qtime_w.size()};
     v.bwd_n_constrained =
       raft::device_span<int>{bwd_n_constrained.data(), bwd_n_constrained.size()};
     return v;
@@ -247,27 +250,28 @@ class lot_schedule_route_t {
   HDI static size_t get_shared_size(i_t route_size,
                                     [[maybe_unused]] lot_schedule_dimension_info_t dim_info_)
   {
-    // 8 scalar double arrays + 2 double arrays of size K per position + int array + NodeInfo array
+    // 8 int32_t scalar arrays + 2 int32_t arrays of size K per position + int array + NodeInfo
+    // array
     i_t stride = route_size + 1;
-    return static_cast<size_t>(8 * stride) * sizeof(double) +
-           static_cast<size_t>(2 * stride * K) * sizeof(double) +
-           raft::alignTo(static_cast<size_t>(stride) * sizeof(int), sizeof(double)) +
-           raft::alignTo(static_cast<size_t>(stride) * sizeof(NodeInfo<i_t>), sizeof(double));
+    return static_cast<size_t>(8 * stride) * sizeof(int32_t) +
+           static_cast<size_t>(2 * stride * K) * sizeof(int32_t) +
+           raft::alignTo(static_cast<size_t>(stride) * sizeof(int), sizeof(int32_t)) +
+           raft::alignTo(static_cast<size_t>(stride) * sizeof(NodeInfo<i_t>), sizeof(int32_t));
   }
 
   lot_schedule_dimension_info_t dim_info;
 
-  rmm::device_uvector<double> lot_weight;
+  rmm::device_uvector<int32_t> lot_weight;
   rmm::device_uvector<NodeInfo<i_t>> node_info;
-  rmm::device_uvector<double> earliest_time;
-  rmm::device_uvector<double> max_qtime;
-  rmm::device_uvector<double> fwd_completion;
-  rmm::device_uvector<double> fwd_wct;
-  rmm::device_uvector<double> bwd_weight_sum;
-  rmm::device_uvector<double> bwd_wct_rel;
-  rmm::device_uvector<double> fwd_qtime_obj;
-  rmm::device_uvector<double> bwd_qtime_b;     // size: (route_size+1) * K
-  rmm::device_uvector<double> bwd_qtime_w;     // size: (route_size+1) * K
+  rmm::device_uvector<int32_t> earliest_time;
+  rmm::device_uvector<int32_t> max_qtime;
+  rmm::device_uvector<int32_t> fwd_completion;
+  rmm::device_uvector<int32_t> fwd_wct;
+  rmm::device_uvector<int32_t> bwd_weight_sum;
+  rmm::device_uvector<int32_t> bwd_wct_rel;
+  rmm::device_uvector<int32_t> fwd_qtime_obj;
+  rmm::device_uvector<int32_t> bwd_qtime_b;    // size: (route_size+1) * K
+  rmm::device_uvector<int32_t> bwd_qtime_w;    // size: (route_size+1) * K
   rmm::device_uvector<int> bwd_n_constrained;  // size: route_size+1
 };
 

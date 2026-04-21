@@ -124,10 +124,10 @@ TEST(vehicle_order_match, vehicle_order_cost_steers_assignment)
   // n_orders = n_locations (depot included means n_orders = n_locations)
   // n_orders as reported to the solver = n_locations (depot at index 0)
   // costs are indexed [0..n_locations-1]: depot gets 0, orders get costs
-  const i_t n_orders           = n_locations;
-  std::vector<double> costs_v0 = {0., 0., 1000., 1000.};  // prefers order 1
-  std::vector<double> costs_v1 = {0., 1000., 0., 1000.};  // prefers order 2
-  std::vector<double> costs_v2 = {0., 1000., 1000., 0.};  // prefers order 3
+  const i_t n_orders        = n_locations;
+  std::vector<int> costs_v0 = {0, 0, 1000, 1000};  // prefers order 1
+  std::vector<int> costs_v1 = {0, 1000, 0, 1000};  // prefers order 2
+  std::vector<int> costs_v2 = {0, 1000, 1000, 0};  // prefers order 3
 
   auto costs_v0_d = cuopt::device_copy(costs_v0, stream);
   auto costs_v1_d = cuopt::device_copy(costs_v1, stream);
