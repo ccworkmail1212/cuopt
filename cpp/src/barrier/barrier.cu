@@ -1094,6 +1094,7 @@ class iteration_data_t {
     std::sort(column_nz_permutation.begin(),
               column_nz_permutation.end(),
               [&column_nz](i_t i, i_t j) { return column_nz[i] < column_nz[j]; });
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
     // We then compute the exact sparsity pattern for columns of A whose where
     // the number of nonzeros is less than a threshold. This part can be done
@@ -1124,6 +1125,7 @@ class iteration_data_t {
     // The best way to do that is to have A stored in CSR format.
     csr_matrix_t<i_t, f_t> A_row(0, 0, 0);
     A.to_compressed_row(A_row);
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
     std::vector<i_t> histogram(m + 1, 0);
     for (i_t j = 0; j < n; j++) {
@@ -1253,6 +1255,7 @@ class iteration_data_t {
     std::sort(permutation.begin(), permutation.end(), [&delta_nz](i_t i, i_t j) {
       return delta_nz[i] < delta_nz[j];
     });
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
     // Now we make a forward pass and compute the number of nonzeros in C
     // assuming we had included column j
@@ -2153,10 +2156,9 @@ void barrier_solver_t<i_t, f_t>::gpu_compute_residual_norms(const rmm::device_uv
     std::max(device_vector_norm_inf<i_t, f_t>(data.d_primal_residual_, stream_view_),
              device_vector_norm_inf<i_t, f_t>(data.d_bound_residual_, stream_view_));
   dual_residual_norm = device_vector_norm_inf<i_t, f_t>(data.d_dual_residual_, stream_view_);
-  // TODO: CMM understand why rhs and not residual
   complementarity_residual_norm =
-    std::max(device_vector_norm_inf<i_t, f_t>(data.d_complementarity_xz_rhs_, stream_view_),
-             device_vector_norm_inf<i_t, f_t>(data.d_complementarity_wv_rhs_, stream_view_));
+    std::max(device_vector_norm_inf<i_t, f_t>(data.d_complementarity_xz_residual_, stream_view_),
+             device_vector_norm_inf<i_t, f_t>(data.d_complementarity_wv_residual_, stream_view_));
 }
 
 template <typename i_t, typename f_t>
@@ -2298,6 +2300,12 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     if (use_augmented) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
       data.form_augmented();
+      // Check halt after form_augmented (synchronous) and before factorize (~1s).
+      // If halt was set while form_augmented ran, we catch it here and skip the
+      // expensive factorization entirely.
+      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+        return CONCURRENT_HALT_RETURN;
+      }
       status = data.chol->factorize(data.device_augmented);
 
 #ifdef CHOLESKY_DEBUG_CHECK
@@ -2306,6 +2314,12 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     } else {
       // compute ADAT = A Dinv * A^T
       data.form_adat();
+      // Check halt after form_adat (synchronous) and before factorize (~1s).
+      // If halt was set while form_adat ran, we catch it here and skip the
+      // expensive Cholesky factorization entirely.
+      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+        return CONCURRENT_HALT_RETURN;
+      }
       // factorize
       status = data.chol->factorize(data.device_ADAT);
     }
@@ -3494,7 +3508,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     f_t relative_primal_residual = primal_residual_norm / (1.0 + norm_b);
     f_t relative_dual_residual   = dual_residual_norm / (1.0 + norm_c);
     f_t relative_complementarity_residual =
-      complementarity_residual_norm / (1.0 + std::abs(primal_objective));
+      complementarity_residual_norm /
+      (1.0 + std::min(std::abs(compute_user_objective(lp, primal_objective)),
+                      std::abs(primal_objective)));
 
     dense_vector_t<i_t, f_t> upper(lp.upper);
     data.gather_upper_bounds(upper, data.restrict_u_);
@@ -3510,11 +3526,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     float64_t elapsed_time = toc(start_time);
     settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",
                         iter,
-                        primal_objective,
-                        dual_objective,
-                        primal_residual_norm,
-                        dual_residual_norm,
-                        complementarity_residual_norm,
+                        compute_user_objective(lp, primal_objective),
+                        compute_user_objective(lp, dual_objective),
+                        relative_primal_residual,
+                        relative_dual_residual,
+                        relative_complementarity_residual,
                         elapsed_time);
 
     bool converged = primal_residual_norm < settings.barrier_relative_feasibility_tol &&
@@ -3656,7 +3672,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       relative_primal_residual = primal_residual_norm / (1.0 + norm_b);
       relative_dual_residual   = dual_residual_norm / (1.0 + norm_c);
       relative_complementarity_residual =
-        complementarity_residual_norm / (1.0 + std::abs(primal_objective));
+        complementarity_residual_norm /
+        (1.0 + std::min(std::abs(compute_user_objective(lp, primal_objective)),
+                        std::abs(primal_objective)));
 
       if (relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
           relative_dual_residual < settings.barrier_relaxed_optimality_tol &&
