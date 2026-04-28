@@ -10,11 +10,11 @@
 #include "break_node.cuh"
 #include "capacity_node.cuh"
 #include "distance_node.cuh"
-#include "lot_schedule_node.cuh"
 #include "mismatch_node.cuh"
 #include "pdp_node.cuh"
 #include "prize_node.cuh"
 #include "service_time_node.cuh"
+#include "soft_time_node.cuh"
 #include "tasks_node.cuh"
 #include "time_node.cuh"
 #include "vehicle_fixed_cost_node.cuh"
@@ -297,7 +297,7 @@ class node_t {
   mismatch_node_t<i_t, f_t> mismatch_dim;
   break_node_t<i_t, f_t> break_dim;
   vehicle_fixed_cost_node_t<i_t, f_t> vehicle_fixed_cost_dim;
-  lot_schedule_node_t<i_t, f_t> lot_schedule_dim;
+  soft_time_node_t<i_t, f_t> soft_time_dim;
 
   static constexpr int max_capacity_dim = decltype(capacity_dim)::max_capacity_dim;
 };

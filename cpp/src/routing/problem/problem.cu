@@ -361,19 +361,19 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
     }
   }
 
-  // LOT_SCHEDULE dimension info (lot scheduling WCT objective + optional qtime constraint)
-  if (!order_info.v_lot_weights_.is_empty()) {
-    dimensions_info.enable_dimension(dim_t::LOT_SCHEDULE);
+  // SOFT_TIME dimension info (soft time WCT objective + optional lateness penalty)
+  if (!order_info.v_order_weights_.is_empty()) {
+    dimensions_info.enable_dimension(dim_t::SOFT_TIME);
     double wct_weight = specified_weights.count(objective_t::WEIGHTED_COMPLETION_TIME)
                           ? specified_weights.at(objective_t::WEIGHTED_COMPLETION_TIME)
                           : 1.0;
     dimensions_info.enable_objective(objective_t::WEIGHTED_COMPLETION_TIME, wct_weight);
-    if (!order_info.v_lot_max_qtimes_.is_empty()) {
-      dimensions_info.template get_dimension<dim_t::LOT_SCHEDULE>().has_qtime = true;
-      double qtime_weight = specified_weights.count(objective_t::LOT_QTIME_PENALTY)
-                              ? specified_weights.at(objective_t::LOT_QTIME_PENALTY)
-                              : 1.0;
-      dimensions_info.enable_objective(objective_t::LOT_QTIME_PENALTY, qtime_weight);
+    if (!order_info.v_order_due_times_.is_empty()) {
+      dimensions_info.template get_dimension<dim_t::SOFT_TIME>().has_lateness = true;
+      double lateness_weight = specified_weights.count(objective_t::LATENESS)
+                                 ? specified_weights.at(objective_t::LATENESS)
+                                 : 1.0;
+      dimensions_info.enable_objective(objective_t::LATENESS, lateness_weight);
     }
   }
 

@@ -49,8 +49,8 @@ assignment_t<i_t> ges_solver_t<i_t, f_t, REQUEST>::compute_ges_solution(
                 "Route count cannot be bigger than number vehicles");
 
   // Weights for dimensions that do not have any constraints don't matter.
-  // LOT_SCHEDULE uses 10000 when qtime constraints are enabled; the weight is
-  // harmless when qtime is not used (infeasibility stays 0).
+  // SOFT_TIME uses 10000 when due time constraints are enabled; the weight is
+  // harmless when due times are not used (infeasibility stays 0).
   const double initial_weights[] = {
     10000., 10000., 100., 1000., 1000., 1000., 10000., 10000., 10000., 10000.};
   detail::infeasible_cost_t weights(initial_weights);

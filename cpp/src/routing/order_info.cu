@@ -234,14 +234,14 @@ void populate_order_info(data_model_view_t<i_t, f_t> const& data_model,
 
   populate_time_windows(data_model, order_info_);
 
-  if (auto lot_weights = data_model.get_order_lot_weights(); lot_weights.size() > 0) {
-    order_info_.v_lot_weights_.resize(norders, stream_view);
-    raft::copy(order_info_.v_lot_weights_.data(), lot_weights.data(), norders, stream);
+  if (auto order_weights = data_model.get_order_weights(); order_weights.size() > 0) {
+    order_info_.v_order_weights_.resize(norders, stream_view);
+    raft::copy(order_info_.v_order_weights_.data(), order_weights.data(), norders, stream);
   }
 
-  if (auto max_qtimes = data_model.get_order_max_qtimes(); max_qtimes.size() > 0) {
-    order_info_.v_lot_max_qtimes_.resize(norders, stream_view);
-    raft::copy(order_info_.v_lot_max_qtimes_.data(), max_qtimes.data(), norders, stream);
+  if (auto due_times = data_model.get_order_due_times(); due_times.size() > 0) {
+    order_info_.v_order_due_times_.resize(norders, stream_view);
+    raft::copy(order_info_.v_order_due_times_.data(), due_times.data(), norders, stream);
   }
 }
 

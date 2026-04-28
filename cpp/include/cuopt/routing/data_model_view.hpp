@@ -374,13 +374,13 @@ class data_model_view_t {
   void set_order_prizes(f_t const* prizes, bool validate_input = true);
 
   /**
-   * @brief Set per-lot weights for the lot scheduling objective.
-   *        Weight controls the priority of each lot in the weighted completion
-   *        time and qtime penalty objectives.
+   * @brief Set per-order weights for the soft time scheduling objective.
+   *        Weight controls the priority of each order in the weighted completion
+   *        time and lateness penalty objectives.
    *
-   * @param[in] lot_weights Per-order weight array (integer, size = num_orders)
+   * @param[in] order_weights Per-order weight array (integer, size = num_orders)
    */
-  void set_order_lot_weights(i_t const* lot_weights);
+  void set_order_weights(i_t const* order_weights);
 
   /**
    * @brief Add precedence constraints for a given order.
@@ -600,25 +600,25 @@ class data_model_view_t {
   raft::device_span<f_t const> get_order_prizes() const noexcept;
 
   /**
-   * @brief Get per-lot weights set via set_order_lot_weights
-   * @return raft::device_span<double const>
-   */
-  raft::device_span<i_t const> get_order_lot_weights() const noexcept;
-
-  /**
-   * @brief Set per-lot maximum queue time (qtime) constraint.
-   *        Each lot must begin processing within max_qtime[k] of t=0.
-   *        Violation is treated as infeasibility: penalty = max(0, start_k - max_qtime_k).
-   *
-   * @param[in] max_qtimes Per-order qtime deadline array (integer, size = num_orders)
-   */
-  void set_order_max_qtimes(i_t const* max_qtimes);
-
-  /**
-   * @brief Get per-lot max qtimes set via set_order_max_qtimes
+   * @brief Get per-order weights set via set_order_weights
    * @return raft::device_span<i_t const>
    */
-  raft::device_span<i_t const> get_order_max_qtimes() const noexcept;
+  raft::device_span<i_t const> get_order_weights() const noexcept;
+
+  /**
+   * @brief Set per-order due time constraint for the soft time scheduling objective.
+   *        Each order must begin processing by due_time[k] (measured from t=0).
+   *        Lateness penalty = max(0, start_k - due_time_k) * order_weight_k.
+   *
+   * @param[in] due_times Per-order due time array (integer, size = num_orders)
+   */
+  void set_order_due_times(i_t const* due_times);
+
+  /**
+   * @brief Get per-order due times set via set_order_due_times
+   * @return raft::device_span<i_t const>
+   */
+  raft::device_span<i_t const> get_order_due_times() const noexcept;
 
   /**
    * @brief Get pickup delivery pairs
@@ -683,8 +683,8 @@ class data_model_view_t {
   detail::order_time_window_t<i_t, f_t> order_tw_{};
 
   raft::device_span<f_t const> order_prizes_;
-  raft::device_span<i_t const> order_lot_weights_;
-  raft::device_span<i_t const> order_max_qtimes_;
+  raft::device_span<i_t const> order_weights_;
+  raft::device_span<i_t const> order_due_times_;
 
   i_t const* start_locations_{nullptr};
   i_t const* return_locations_{nullptr};

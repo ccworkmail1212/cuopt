@@ -34,7 +34,7 @@ constexpr int BREAK = 7;
 
 constexpr int VEHICLE_FIXED_COST = 8;
 
-constexpr int LOT_SCHEDULE = 9;
+constexpr int SOFT_TIME = 9;
 
 constexpr int NDIM = 10;
 

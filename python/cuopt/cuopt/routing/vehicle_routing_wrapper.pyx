@@ -124,17 +124,15 @@ class Objective(IntEnum):
                           serviced orders
     VEHICLE_FIXED_COST  - Models cost per vehicle. Enabled when set_vehicle_fixed_costs is used.
 
-    WEIGHTED_COMPLETION_TIME - Sum of lot_weight * completion_time for each lot.
-                               Used in lot scheduling problems. Enabled when
-                               set_order_lot_weights is used.
+    WEIGHTED_COMPLETION_TIME - Sum of order_weight * completion_time for each order.
+                               Enabled when set_order_weights is used.
 
-    VEHICLE_ORDER_COST  - Sum of vehicle-order assignment costs. Used to steer
-                          tool-to-lot assignments in lot scheduling. Enabled
+    VEHICLE_ORDER_COST  - Sum of vehicle-order assignment costs. Enabled
                           when set_vehicle_order_cost is used.
 
-    LOT_QTIME_PENALTY   - Sum of max(0, actual_start - max_qtime) * lot_weight per lot.
-                          Penalizes lots that start after their qtime deadline, weighted
-                          by lot_weight. Enabled when set_order_max_qtimes is used.
+    LATENESS            - Sum of max(0, actual_start - due_time) * order_weight per order.
+                          Penalizes orders that start after their due time, weighted
+                          by order_weight. Enabled when set_order_due_times is used.
     """
 
     COST = objective_t.COST
@@ -145,7 +143,7 @@ class Objective(IntEnum):
     VEHICLE_FIXED_COST = objective_t.VEHICLE_FIXED_COST
     WEIGHTED_COMPLETION_TIME = objective_t.WEIGHTED_COMPLETION_TIME
     VEHICLE_ORDER_COST = objective_t.VEHICLE_ORDER_COST
-    LOT_QTIME_PENALTY = objective_t.LOT_QTIME_PENALTY
+    LATENESS = objective_t.LATENESS
 
 
 class NodeType(IntEnum):
@@ -216,8 +214,8 @@ cdef class DataModel:
         self.order_vehicle_match = {}
         self.order_service_times = {}
         self.vehicle_order_cost = {}
-        self.order_lot_weights = cudf.Series()
-        self.order_max_qtimes = cudf.Series()
+        self.order_weights = cudf.Series()
+        self.order_due_times = cudf.Series()
 
         self.initial_vehicle_ids = cudf.Series()
         self.initial_routes = cudf.Series()
@@ -454,21 +452,21 @@ cdef class DataModel:
         self.c_data_model_view.get().set_vehicle_order_cost(
             vehicle_id, <const int *> c_costs, len(costs))
 
-    def set_order_lot_weights(self, lot_weights):
-        self.order_lot_weights = type_cast(lot_weights, np.int32, "lot_weights")
-        cdef uintptr_t c_lot_weights = (
-            self.order_lot_weights.__cuda_array_interface__['data'][0]
+    def set_order_weights(self, order_weights):
+        self.order_weights = type_cast(order_weights, np.int32, "order_weights")
+        cdef uintptr_t c_order_weights = (
+            self.order_weights.__cuda_array_interface__['data'][0]
         )
-        self.c_data_model_view.get().set_order_lot_weights(
-            <const int *> c_lot_weights)
+        self.c_data_model_view.get().set_order_weights(
+            <const int *> c_order_weights)
 
-    def set_order_max_qtimes(self, max_qtimes):
-        self.order_max_qtimes = type_cast(max_qtimes, np.int32, "max_qtimes")
-        cdef uintptr_t c_max_qtimes = (
-            self.order_max_qtimes.__cuda_array_interface__['data'][0]
+    def set_order_due_times(self, due_times):
+        self.order_due_times = type_cast(due_times, np.int32, "due_times")
+        cdef uintptr_t c_due_times = (
+            self.order_due_times.__cuda_array_interface__['data'][0]
         )
-        self.c_data_model_view.get().set_order_max_qtimes(
-            <const int *> c_max_qtimes)
+        self.c_data_model_view.get().set_order_due_times(
+            <const int *> c_due_times)
 
     def add_break_dimension(
         self, break_earliest, break_latest, break_duration

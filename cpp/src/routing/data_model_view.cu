@@ -725,27 +725,27 @@ raft::device_span<f_t const> data_model_view_t<i_t, f_t>::get_order_prizes() con
 }
 
 template <typename i_t, typename f_t>
-void data_model_view_t<i_t, f_t>::set_order_lot_weights(i_t const* lot_weights)
+void data_model_view_t<i_t, f_t>::set_order_weights(i_t const* order_weights)
 {
-  order_lot_weights_ = raft::device_span<i_t const>(lot_weights, num_orders_);
+  order_weights_ = raft::device_span<i_t const>(order_weights, num_orders_);
 }
 
 template <typename i_t, typename f_t>
-raft::device_span<i_t const> data_model_view_t<i_t, f_t>::get_order_lot_weights() const noexcept
+raft::device_span<i_t const> data_model_view_t<i_t, f_t>::get_order_weights() const noexcept
 {
-  return order_lot_weights_;
+  return order_weights_;
 }
 
 template <typename i_t, typename f_t>
-void data_model_view_t<i_t, f_t>::set_order_max_qtimes(i_t const* max_qtimes)
+void data_model_view_t<i_t, f_t>::set_order_due_times(i_t const* due_times)
 {
-  order_max_qtimes_ = raft::device_span<i_t const>(max_qtimes, num_orders_);
+  order_due_times_ = raft::device_span<i_t const>(due_times, num_orders_);
 }
 
 template <typename i_t, typename f_t>
-raft::device_span<i_t const> data_model_view_t<i_t, f_t>::get_order_max_qtimes() const noexcept
+raft::device_span<i_t const> data_model_view_t<i_t, f_t>::get_order_due_times() const noexcept
 {
-  return order_max_qtimes_;
+  return order_due_times_;
 }
 
 template <typename i_t, typename f_t>

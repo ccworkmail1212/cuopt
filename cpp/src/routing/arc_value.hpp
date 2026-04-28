@@ -117,7 +117,7 @@ static constexpr double get_arc_of_dimension(const NodeInfo<i_t>& l1,
              : vehicle_info.order_costs[l1.node()];
   } else if constexpr (dim == dim_t::BREAK) {
     return l1.is_break();
-  } else if constexpr (dim == dim_t::LOT_SCHEDULE) {
+  } else if constexpr (dim == dim_t::SOFT_TIME) {
     // Arc is travel time only; service time is fetched from vehicle_info inside calculate_forward
     return get_transit_time(l1, l2, vehicle_info, false);
   } else {

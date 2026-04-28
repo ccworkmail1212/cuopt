@@ -1026,15 +1026,14 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         super().set_vehicle_order_cost(vehicle_id, costs)
 
     @catch_cuopt_exception
-    def set_order_lot_weights(self, lot_weights):
+    def set_order_weights(self, order_weights):
         """
-        Set per-lot weights used to compute the weighted completion time (WCT)
-        objective in lot scheduling problems. Higher-weight lots are
-        prioritized for earlier processing.
+        Set per-order weights used to compute the weighted completion time (WCT)
+        objective. Higher-weight orders are prioritized for earlier processing.
 
         Parameters
         ----------
-        lot_weights : cudf.Series dtype - int32
+        order_weights : cudf.Series dtype - int32
             Non-negative integer weights of size number of orders. The depot
             order should have weight 0.
 
@@ -1043,31 +1042,30 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         >>> n_locations = 4
         >>> n_vehicles = 2
         >>> d = routing.DataModel(n_locations, n_vehicles)
-        >>> d.set_order_lot_weights(cudf.Series([0, 2, 1, 3], dtype="int32"))
+        >>> d.set_order_weights(cudf.Series([0, 2, 1, 3], dtype="int32"))
         >>> cuopt_solution = routing.Solve(d)
         """
 
         validate_size(
-            lot_weights,
-            "lot weights",
+            order_weights,
+            "order weights",
             self.get_num_orders(),
             "number of orders",
         )
-        validate_non_negative(lot_weights, "lot weights")
-        super().set_order_lot_weights(lot_weights)
+        validate_non_negative(order_weights, "order weights")
+        super().set_order_weights(order_weights)
 
     @catch_cuopt_exception
-    def set_order_max_qtimes(self, max_qtimes):
+    def set_order_due_times(self, due_times):
         """
-        Set per-lot maximum queue times (latest start times) for lot
-        scheduling. A lot's processing must begin no later than its
-        max_qtime after it becomes available (i.e., after its earliest
-        arrival time).
+        Set per-order due times (latest start times). An order's processing
+        must begin no later than its due time. Orders that start after their
+        due time incur a lateness penalty weighted by order_weight.
 
         Parameters
         ----------
-        max_qtimes : cudf.Series dtype - int32
-            Non-negative integer max queue times of size number of orders.
+        due_times : cudf.Series dtype - int32
+            Non-negative integer due times of size number of orders.
             Use a large value (e.g. 2147483647) to indicate no constraint
             for a given order. The depot order should have a large value.
 
@@ -1076,18 +1074,18 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         >>> n_locations = 4
         >>> n_vehicles = 2
         >>> d = routing.DataModel(n_locations, n_vehicles)
-        >>> d.set_order_max_qtimes(cudf.Series([2147483647, 4, 2147483647, 4], dtype="int32"))
+        >>> d.set_order_due_times(cudf.Series([2147483647, 4, 2147483647, 4], dtype="int32"))
         >>> cuopt_solution = routing.Solve(d)
         """
 
         validate_size(
-            max_qtimes,
-            "max qtimes",
+            due_times,
+            "due times",
             self.get_num_orders(),
             "number of orders",
         )
-        validate_non_negative(max_qtimes, "max qtimes")
-        super().set_order_max_qtimes(max_qtimes)
+        validate_non_negative(due_times, "due times")
+        super().set_order_due_times(due_times)
 
     @catch_cuopt_exception
     def add_capacity_dimension(self, name, demand, capacity):

@@ -28,7 +28,7 @@ enum class dim_t {
   MISMATCH,
   BREAK,
   VEHICLE_FIXED_COST,
-  LOT_SCHEDULE,
+  SOFT_TIME,
   SIZE
 };
 
@@ -229,8 +229,8 @@ struct vehicle_fixed_cost_dimension_info_t {
   constexpr bool has_constraints() const { return false; };
 };
 
-struct lot_schedule_dimension_info_t {
-  bool has_qtime = false;
+struct soft_time_dimension_info_t {
+  bool has_lateness = false;
   HDI constexpr bool has_constraints() const { return false; }
 };
 
@@ -264,8 +264,8 @@ static HDI const auto& get_dimension_of(const T& obj) noexcept
     return obj.break_dim;
   } else if constexpr (I == dim_t::VEHICLE_FIXED_COST) {
     return obj.vehicle_fixed_cost_dim;
-  } else if constexpr (I == dim_t::LOT_SCHEDULE) {
-    return obj.lot_schedule_dim;
+  } else if constexpr (I == dim_t::SOFT_TIME) {
+    return obj.soft_time_dim;
   }
 }
 
@@ -303,8 +303,8 @@ constexpr auto dim_to_string() noexcept
     return "Break dimension";
   } else if constexpr (I == (int)dim_t::VEHICLE_FIXED_COST) {
     return "Vehicle cost dimension";
-  } else if constexpr (I == (int)dim_t::LOT_SCHEDULE) {
-    return "Lot schedule dimension";
+  } else if constexpr (I == (int)dim_t::SOFT_TIME) {
+    return "Soft time dimension";
   }
 }
 
@@ -415,7 +415,7 @@ class enabled_dimensions_t {
   mismatch_dimension_info_t mismatch_dim;
   break_dimension_info_t break_dim;
   vehicle_fixed_cost_dimension_info_t vehicle_fixed_cost_dim;
-  lot_schedule_dimension_info_t lot_schedule_dim;
+  soft_time_dimension_info_t soft_time_dim;
 
   objective_cost_t objective_weights;
   bool is_tsp{false};
