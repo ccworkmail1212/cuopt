@@ -269,7 +269,7 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
   bool enable_time_dim = vehicle_max_times_exists || vehicle_tw_exists || travel_time_obj_exists ||
                          order_tw_exists || time_matrix_exists;
 
-  if (enable_time_dim && false) {
+  if (enable_time_dim) {
     dimensions_info.enable_dimension(dim_t::TIME);
     auto& time_dim_info = dimensions_info.time_dim;
     if (auto vehicle_max_times = data_view_ptr->get_vehicle_max_times();
