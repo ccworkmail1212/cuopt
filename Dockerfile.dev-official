@@ -1,0 +1,123 @@
+# syntax=docker/dockerfile:1.2
+# cuOpt 開發容器 — 完全不 pip 下載大型套件，避免 WSL2 crash
+#
+# 策略：
+#   - Base: nvidia/cuda:devel-ubuntu24.04（GCC13 + CUDA math dev 全內建）
+#   - RAPIDS cmake configs + headers: 直接 COPY 自官方 nvidia/cuopt image
+#   - 沒有大型 pip install → 不會讓 WSL2 OOM crash
+#
+# 新增層預計：~200MB << 2GB ✅
+
+# ── Stage 1：從官方 cuopt image 取出 RAPIDS cmake configs + headers ────────
+FROM nvidia/cuopt:26.6.0a-cuda12.9-py3.14 AS rapids-src
+
+# ── Stage 2：Dev 環境（Ubuntu 24.04 = GCC 13 內建）──────────────────────────
+FROM nvidia/cuda:12.9.0-devel-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 小型 build 工具（不包含大型 CUDA math dev，devel base 已有）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ninja-build \
+        git \
+        ccache \
+        python3-pip \
+        python3-dev \
+        libbz2-dev \
+        zlib1g-dev \
+        libssl-dev \
+        uuid-dev \
+        libgomp1 \
+        libtbb-dev \
+        libboost-dev \
+        libgmp-dev \
+        libblas-dev \
+        cudss \
+        cuda-profiler-api-12-9 \
+    && rm -rf /var/lib/apt/lists/*
+
+# cmake 3.30+（apt 版本太舊，pip 的 cmake 只有 80MB）
+RUN python3 -m pip install --break-system-packages --no-cache-dir "cmake>=3.30.4" && \
+    ln -sf /usr/bin/python3 /usr/local/bin/python
+ENV PATH="/usr/local/lib/python3.12/dist-packages/cmake/data/bin:${PATH}"
+
+# ── RAPIDS cmake configs + headers（從官方 image COPY，保持原始目錄結構）────
+# thrust-header-search.cmake 用相對路徑找 headers，必須保持和官方 image 相同的
+# lib64/rapids/cmake/thrust/ → ../../../../include/rapids/ 的相對關係
+
+# 保留完整目錄結構（只跳過大型 pre-built .so 和 .libs）
+COPY --from=rapids-src \
+    /usr/local/lib/python3.14/dist-packages/libcuopt/lib64 \
+    /opt/rapids/libcuopt/lib64
+
+COPY --from=rapids-src \
+    /usr/local/lib/python3.14/dist-packages/libcuopt/include \
+    /opt/rapids/libcuopt/include
+
+COPY --from=rapids-src \
+    /usr/local/lib/python3.14/dist-packages/libraft \
+    /opt/rapids/libraft
+
+COPY --from=rapids-src \
+    /usr/local/lib/python3.14/dist-packages/librmm \
+    /opt/rapids/librmm
+
+COPY --from=rapids-src \
+    /usr/local/lib/python3.14/dist-packages/rapids_logger \
+    /opt/rapids/rapids_logger
+
+# 只刪 libcuopt.so（703MB，從源碼 build，不需要 pre-built 版本）
+# 其他 .so（librapids_logger、libraft、librmm 等）linking 時需要，保留
+RUN find /opt/rapids/libcuopt/lib64 -name 'libcuopt*.so*' -delete 2>/dev/null || true
+
+# CUDSS symlinks（cmake FindCUDSS.cmake 期待的目錄結構）
+RUN CUDSS_LIB=$(find /usr -name 'libcudss.so' 2>/dev/null | head -1 | xargs dirname 2>/dev/null) && \
+    CUDSS_INC=$(find /usr -name 'cudss.h' 2>/dev/null | head -1 | xargs dirname 2>/dev/null) && \
+    mkdir -p /opt/cudss && \
+    [ -n "$CUDSS_LIB" ] && ln -sf "$CUDSS_LIB" /opt/cudss/lib || true && \
+    [ -n "$CUDSS_INC" ] && ln -sf "$CUDSS_INC" /opt/cudss/include || true
+
+# cublas SONAME compat：apt 的 cudss 連結 libcublas.so.13，
+# 但 devel image 只有 libcublas.so.12（相容 ABI）→ 加 .so.13 別名
+RUN CUBLAS12=$(find /usr/local/cuda -name 'libcublas.so.12' 2>/dev/null | head -1) && \
+    [ -n "$CUBLAS12" ] && ln -sf "$CUBLAS12" "$(dirname $CUBLAS12)/libcublas.so.13" || true
+
+# 預先 clone 離線 cmake deps
+RUN git clone --depth=1 https://github.com/scipopt/papilo.git /opt/cuopt-deps/papilo \
+    && cd /opt/cuopt-deps/papilo \
+    && git fetch --depth=1 origin 741a2b9c8155b249d6df574d758b4d97d4417520 \
+    && git checkout 741a2b9c8155b249d6df574d758b4d97d4417520 \
+    && git submodule update --init --recursive --depth=1 \
+    && git clone --depth=1 --branch v0.0.8 https://github.com/dance858/PSLP.git /opt/cuopt-deps/pslp \
+    && git clone --depth=1 --branch v3.2 https://github.com/p-ranav/argparse.git /opt/cuopt-deps/argparse
+
+ENV CUDSS_DIR=/opt/cudss \
+    FETCHCONTENT_SOURCE_DIR_PAPILO=/opt/cuopt-deps/papilo \
+    FETCHCONTENT_SOURCE_DIR_PSLP=/opt/cuopt-deps/pslp \
+    FETCHCONTENT_SOURCE_DIR_ARGPARSE=/opt/cuopt-deps/argparse \
+    CUDACXX=/usr/local/cuda/bin/nvcc \
+    PARALLEL_LEVEL=2 \
+    CMAKE_CUDA_COMPILER_LAUNCHER=ccache \
+    CMAKE_C_COMPILER_LAUNCHER=ccache \
+    CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    RAPIDS_DIST=/opt/rapids \
+    DEBIAN_FRONTEND=""
+
+COPY ci/docker/build_cuopt.sh /usr/local/bin/cuopt-build
+RUN chmod +x /usr/local/bin/cuopt-build
+
+WORKDIR /cuopt
+
+CMD ["/bin/bash", "-c", "\
+echo '' && \
+echo '=== cuOpt 開發容器 ===' && \
+echo '  GCC  :' $(gcc --version | head -1) && \
+echo '  nvcc :' $(nvcc --version | grep release | sed 's/.*release //;s/,.*//')  && \
+echo '  cmake:' $(cmake --version | head -1) && \
+echo '' && \
+echo '  cuopt-build                   # build（NATIVE arch）' && \
+echo '  cuopt-build --cache-tool=ccache  # 加 ccache 加速' && \
+echo '  ctest --test-dir cpp/build -j4   # C++ 測試' && \
+echo '  pytest python/cuopt/cuopt/tests  # Python 測試' && \
+echo '' && \
+exec bash"]

@@ -75,7 +75,7 @@ set(CUOPT_CXX_FLAGS "")
 set(CUOPT_CUDA_FLAGS "")
 
 if (CMAKE_COMPILER_IS_GNUCXX)
-    list(APPEND CUOPT_CXX_FLAGS -Werror -Wno-error=deprecated-declarations)
+    list(APPEND CUOPT_CXX_FLAGS -Werror -Wno-error=deprecated-declarations -Wno-nonnull)
 endif (CMAKE_COMPILER_IS_GNUCXX)
 
 # Papilo pulls in Boost.Multiprecision float128 support, which expects quadmath.h from the GCC
@@ -678,7 +678,7 @@ if (NOT BUILD_LP_ONLY)
             "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
     )
 
-    target_link_options(cuopt_cli PRIVATE -pie)
+    target_link_options(cuopt_cli PRIVATE -pie -Wl,--allow-shlib-undefined)
 
     target_include_directories(cuopt_cli
             PRIVATE
