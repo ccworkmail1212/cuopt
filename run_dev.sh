@@ -57,6 +57,11 @@ echo "    Source  : $REPO_ROOT  →  /cuopt"
 echo "    ccache  : $CCACHE_VOLUME  →  /root/.cache/ccache"
 echo "    GPU     : ${GPU_FLAG:-無（無 GPU 模式）}"
 echo ""
+echo "  常用指令："
+echo "    cuopt-build                     # C++ build（~40 分初次，之後秒級）"
+echo "    cuopt-build --with-tests        # C++ build + C++ 測試（需 GPU）"
+echo "    ctest --test-dir cpp/build -j4  # 執行已 build 的 C++ 測試"
+echo ""
 
 docker run \
     $GPU_FLAG \

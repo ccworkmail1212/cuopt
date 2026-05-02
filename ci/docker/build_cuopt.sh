@@ -93,8 +93,13 @@ fi
 
 if [ -n "${RAPIDS_DIST:-}" ]; then
     # ─── 兩步驟 build（官方 image 環境）───────────────────────────────────────
-    # Step 1：只 build C++ library（libcuopt target）
-    ./build.sh libcuopt ${ARCH_FLAG} ${EXTRA_FLAGS} --skip-tests-build "$@"
+    # Step 1：build C++ library（libcuopt target）
+    # --skip-tests-build 跳過測試以加速；傳 --with-tests 可啟用 ctest
+    if [[ " $* " == *"--with-tests"* ]]; then
+        ./build.sh libcuopt ${ARCH_FLAG} ${EXTRA_FLAGS} "$@"
+    else
+        ./build.sh libcuopt ${ARCH_FLAG} ${EXTRA_FLAGS} --skip-tests-build "$@"
+    fi
 
     # Step 2：把剛 build 的 libcuopt.so 放到 RAPIDS_DIST 讓 cmake config 找得到
     cp cpp/build/libcuopt.so "${RAPIDS_DIST}/libcuopt/lib64/"
