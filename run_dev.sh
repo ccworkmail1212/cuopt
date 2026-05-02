@@ -13,7 +13,7 @@
 
 set -eo pipefail
 
-DEV_IMAGE="cuopt-dev-official:26.6.0a"
+DEV_IMAGE="workcc/cuopt-dev:26.6.0a"
 CCACHE_VOLUME="cuopt-ccache"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

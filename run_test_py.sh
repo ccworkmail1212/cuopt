@@ -55,8 +55,9 @@ echo "    so      : ${LIBCUOPT_SO}"
 echo "    Source  : ${REPO_ROOT}  → /cuopt"
 echo ""
 
-# 設定環境：GLIBC compat shim + CUDA libs
-SETUP_CMD="export LD_LIBRARY_PATH=${NVIDIA_LIBS}"
+# 設定環境：安裝 Ubuntu 22.04 系統 TBB（apt 安裝需要 update） + GLIBC compat shim + CUDA libs
+# libtbb12 提供 libtbb.so.12（與我們 Ubuntu 24.04 build 的 libcuopt.so 相容）
+SETUP_CMD="apt-get update -qq 2>/dev/null && apt-get install -y -q libtbb12 2>/dev/null | tail -1 && export LD_LIBRARY_PATH=${NVIDIA_LIBS}"
 if [ -f "${GLIBC_SHIM}" ]; then
     SETUP_CMD="${SETUP_CMD} && export LD_PRELOAD=/tmp/libglibc_compat.so"
 fi
