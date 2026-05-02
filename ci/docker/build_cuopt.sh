@@ -15,6 +15,11 @@ if [ -n "${RAPIDS_DIST:-}" ]; then
     # 實際執行時 libcublas 由 cuopt pip packages 的 .libs 目錄提供
     export CMAKE_LIBRARY_PATH="/usr/local/cuda/targets/x86_64-linux/lib/stubs:${CMAKE_LIBRARY_PATH:-}"
 
+    # GCC 13 on Ubuntu 24.04 預設用 C23，產生 __isoc23_fscanf/__isoc23_strtol
+    # 這些 symbol 需要 GLIBC 2.38，但官方 image 只有 GLIBC 2.35
+    # 強制 C17 讓 libcuopt.so 相容 GLIBC 2.35（只需標準 C 函式不需要 C23）
+    export CMAKE_C_FLAGS="${CMAKE_C_FLAGS:-} -std=gnu17"
+
 
     # cmake 從 env var 讀 CMAKE_PREFIX_PATH 時使用 Unix PATH 格式（冒號分隔）
     # 支援兩種路徑結構：
@@ -120,14 +125,33 @@ DEPS_EOF
     # Python wheel build 需要 pylibraft / rmm Cython 定義（.pxd），
     # 這些套件未在 dev image 中安裝。Python 測試請使用 run_test_py.sh：
     # 以官方 nvidia/cuopt image（已有 pylibraft/rmm/cupy）+ 自訂 libcuopt.so 掛載
+
+    # ── ELF patch：讓 Ubuntu 24.04 build 的 .so 在 Ubuntu 22.04 官方 image 上載入 ──
+    # Ubuntu 24.04 GCC 13 → GLIBC_2.38、GLIBCXX_3.4.31，官方 image 只有 2.35/3.4.30
+    # 方法：修改 .gnu.version_r 的版本字串 + hash，patch 成系統實際有的版本
+    PATCH_SCRIPT=/usr/local/bin/patch_glibc.py
+    if [ -f /cuopt/ci/docker/patch_glibc.py ] && [ -f /cuopt/cpp/build/libcuopt.so ]; then
+        python3 /cuopt/ci/docker/patch_glibc.py \
+            /cuopt/cpp/build/libcuopt.so \
+            /cuopt/cpp/build/libcuopt.so 2>/dev/null && \
+            echo "libcuopt.so ELF版本patch完成 (GLIBC_2.38→2.17, GLIBCXX_3.4.31→3.4.30) ✓"
+    fi
+
+    # ── GLIBC compat shim：提供 __isoc23_fscanf/__isoc23_strtol 給 Ubuntu 22.04 ──
+    if [ -f /cuopt/ci/docker/glibc_compat.c ]; then
+        gcc -shared -fPIC -O2 \
+            -o /cuopt/ci/docker/libglibc_compat.so \
+            /cuopt/ci/docker/glibc_compat.c 2>/dev/null && \
+            echo "libglibc_compat.so built ✓"
+    fi
+
     echo ""
     echo "=== C++ build complete ==="
-    echo "  libcuopt.so  : cpp/build/libcuopt.so"
+    echo "  libcuopt.so  : cpp/build/libcuopt.so  (ELF patched for Ubuntu 22.04)"
     echo "  cuopt_cli    : cpp/build/cuopt_cli"
     echo ""
-    echo "  Python 測試請使用官方 image + custom .so："
-    echo "  bash run_test_py.sh                    # pytest"
-    echo "  bash run_test_py.sh ctest -j4          # C++ tests"
+    echo "  Python 測試（需 Ubuntu 22.04 dev image，TBB 相容）："
+    echo "  bash run_test_py.sh pytest python/cuopt/cuopt/tests"
     echo ""
 else
     ./build.sh ${ARCH_FLAG} ${EXTRA_FLAGS} --skip-tests-build "$@"
