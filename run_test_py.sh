@@ -55,9 +55,19 @@ echo "    so      : ${LIBCUOPT_SO}"
 echo "    Source  : ${REPO_ROOT}  → /cuopt"
 echo ""
 
-# 設定環境：安裝 Ubuntu 22.04 系統 TBB（apt 安裝需要 update） + GLIBC compat shim + CUDA libs
-# libtbb12 提供 libtbb.so.12（與我們 Ubuntu 24.04 build 的 libcuopt.so 相容）
-SETUP_CMD="apt-get update -qq 2>/dev/null && apt-get install -y -q libtbb12 2>/dev/null | tail -1 && export LD_LIBRARY_PATH=${NVIDIA_LIBS}"
+# 設定環境（離線友善）：
+#   - LD_LIBRARY_PATH：CUDA + RAPIDS + bundled libs
+#   - Ubuntu 22.04 build 的 libcuopt.so 不需要 apt workaround
+#   - Ubuntu 24.04 build 如果需要 libtbb12 請設 CUOPT_NEED_TBB=1
+PY_SITE=/usr/local/lib/python3.14/dist-packages
+NVIDIA_LIBS="${PY_SITE}/nvidia/cu12/lib:${PY_SITE}/nvidia/cublas/lib:${PY_SITE}/nvidia/cusparse/lib:${PY_SITE}/nvidia/curand/lib:${PY_SITE}/nvidia/cusolver/lib:${PY_SITE}/nvidia/nvjitlink/lib:${PY_SITE}/nvidia/cuda_runtime/lib"
+RAPIDS_LIBS="${PY_SITE}/librmm/lib64:${PY_SITE}/libraft/lib64:${PY_SITE}/rapids_logger/lib64"
+BUNDLED_LIBS="${PY_SITE}/libcuopt_cu12.libs"
+TBB_SETUP=""
+if [ "${CUOPT_NEED_TBB:-0}" = "1" ]; then
+    TBB_SETUP="apt-get update -qq 2>/dev/null && apt-get install -y -q libtbb12 2>/dev/null | tail -1 && "
+fi
+SETUP_CMD="${TBB_SETUP}export LD_LIBRARY_PATH=${NVIDIA_LIBS}:${RAPIDS_LIBS}:${BUNDLED_LIBS}"
 if [ -f "${GLIBC_SHIM}" ]; then
     SETUP_CMD="${SETUP_CMD} && export LD_PRELOAD=/tmp/libglibc_compat.so"
 fi
