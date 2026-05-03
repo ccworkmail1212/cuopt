@@ -1,33 +1,27 @@
 # syntax=docker/dockerfile:1.2
 # cuOpt 開發容器 — 總大小 < 2GB（符合公司限制）
 #
-# 架構：
-#   Base: nvidia/cuda:12.9.0-base-ubuntu22.04（官方，~200MB，不受 2GB 限制）
-#   自訂 delta: cuda 編譯工具 + GCC 12 + cmake + RAPIDS headers + papilo
-#   預計總大小: ~1.3GB < 2GB ✅
+# 多 stage build 策略：
+#   Stage 1 (nvcc-src):   nvidia/cuda:devel-ubuntu22.04 → 提供 nvcc + CUDA headers
+#   Stage 2 (rapids-src): nvidia/cuopt → 提供 RAPIDS cmake configs + headers
+#   Final:                nvidia/cuda:base-ubuntu22.04 (~200MB) + 選擇性 COPY
 #
-# 優點：
-#   - GCC 12 on Ubuntu 22.04 → GLIBC 2.35 相容官方 cuopt image
-#   - 內含完整 Python + RAPIDS → 直接跑 pytest 不需要另一個容器
-#
-# 使用：bash run_dev.sh cuopt-build
+# GitHub Actions build 時拉 devel (10GB)，但 push 的 final image 只有 ~1.3GB ✅
+# 公司只需帶 final image（workcc/cuopt-dev, < 2GB）+ 官方 NVIDIA images
 
-# ── Stage 1：從官方 cuopt image 取 RAPIDS cmake configs + headers ──────────
+# ── Stage 1：nvcc + CUDA 編譯工具（從 devel 取，不進最終 image）────────────
+FROM nvidia/cuda:12.9.0-devel-ubuntu22.04 AS nvcc-src
+
+# ── Stage 2：RAPIDS cmake configs（從官方 cuopt image 取）─────────────────
 FROM nvidia/cuopt:26.6.0a-cuda12.9-py3.14 AS rapids-src
 
-# ── Stage 2：最終 dev image（< 2GB 總大小）──────────────────────────────────
+# ── Stage 3：最終 dev image（< 2GB）──────────────────────────────────────────
 FROM nvidia/cuda:12.9.0-base-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# CUDA 編譯工具 + GCC 12 + build tools
-# cuda-minimal-build-12-9 提供 nvcc + CUDA runtime 編譯支援
-# cuda-libraries-dev-12-9 提供 cuBLAS/cuSPARSE stubs（cmake target 用）
+# GCC 12 + build tools（Ubuntu 22.04 標準 repo）
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        cuda-minimal-build-12-9 \
-        cuda-libraries-dev-12-9 \
-        cuda-profiler-api-12-9 \
-        cudss \
         gcc-12 \
         g++-12 \
         ninja-build \
@@ -44,6 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libboost-dev \
         libgmp-dev \
         libblas-dev \
+        cudss \
     && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 120 \
                            --slave /usr/bin/g++ g++ /usr/bin/g++-12 \
     && rm -rf /var/lib/apt/lists/*
@@ -53,7 +48,24 @@ RUN python3 -m pip install --no-cache-dir "cmake>=3.30.4" && \
     ln -sf /usr/bin/python3 /usr/local/bin/python
 ENV PATH="/usr/local/lib/python3/dist-packages/cmake/data/bin:/usr/local/lib/python3.10/dist-packages/cmake/data/bin:${PATH}"
 
-# ── RAPIDS cmake configs + headers（從官方 cuopt image COPY）────────────────
+# ── 從 devel stage 選擇性 COPY nvcc + CUDA 編譯必要檔案 ─────────────────────
+# 只複製編譯所需的部分，不帶入大型 math 執行時期 .so
+COPY --from=nvcc-src /usr/local/cuda/bin/nvcc /usr/local/cuda/bin/nvcc
+COPY --from=nvcc-src /usr/local/cuda/bin/crt /usr/local/cuda/bin/crt
+COPY --from=nvcc-src /usr/local/cuda/include /usr/local/cuda/include
+COPY --from=nvcc-src /usr/local/cuda/targets/x86_64-linux/include \
+    /usr/local/cuda/targets/x86_64-linux/include
+COPY --from=nvcc-src /usr/local/cuda/targets/x86_64-linux/lib/stubs \
+    /usr/local/cuda/targets/x86_64-linux/lib/stubs
+COPY --from=nvcc-src /usr/local/cuda/targets/x86_64-linux/lib/libcudadevrt.a \
+    /usr/local/cuda/targets/x86_64-linux/lib/libcudadevrt.a
+COPY --from=nvcc-src /usr/local/cuda/targets/x86_64-linux/lib/libcudart_static.a \
+    /usr/local/cuda/targets/x86_64-linux/lib/libcudart_static.a
+COPY --from=nvcc-src /usr/local/cuda/nvvm /usr/local/cuda/nvvm
+COPY --from=nvcc-src /usr/local/cuda/lib64/libcufilt.a \
+    /usr/local/cuda/lib64/libcufilt.a
+
+# ── 從 cuopt image COPY RAPIDS cmake configs + headers ─────────────────────
 COPY --from=rapids-src \
     /usr/local/lib/python3.14/dist-packages/libcuopt/lib64 \
     /opt/rapids/libcuopt/lib64
@@ -77,19 +89,16 @@ COPY --from=rapids-src \
 # 刪 pre-built libcuopt.so（從 source 重新 build）
 RUN find /opt/rapids/libcuopt/lib64 -name 'libcuopt*.so*' -delete 2>/dev/null || true
 
-# CUDSS symlinks（cmake FindCUDSS 期待的目錄結構）
+# CUDSS symlinks + cublas compat
 RUN CUDSS_LIB=$(find /usr -name 'libcudss.so' 2>/dev/null | head -1 | xargs dirname 2>/dev/null) && \
     CUDSS_INC=$(find /usr -name 'cudss.h' 2>/dev/null | head -1 | xargs dirname 2>/dev/null) && \
     mkdir -p /opt/cudss && \
     [ -n "$CUDSS_LIB" ] && ln -sf "$CUDSS_LIB" /opt/cudss/lib || true && \
-    [ -n "$CUDSS_INC" ] && ln -sf "$CUDSS_INC" /opt/cudss/include || true
-
-# cublas SONAME compat：apt 的 cudss 連結 libcublas.so.13，
-# 但 base image 只有 libcublas.so.12 → 加別名
-RUN CUBLAS12=$(find /usr/local/cuda -name 'libcublas.so.12' 2>/dev/null | head -1) && \
+    [ -n "$CUDSS_INC" ] && ln -sf "$CUDSS_INC" /opt/cudss/include || true && \
+    CUBLAS12=$(find /usr/local/cuda -name 'libcublas.so.12' 2>/dev/null | head -1) && \
     [ -n "$CUBLAS12" ] && ln -sf "$CUBLAS12" "$(dirname $CUBLAS12)/libcublas.so.13" || true
 
-# 預先 clone 離線 cmake deps（papilo、pslp、argparse）
+# 預先 clone 離線 cmake deps
 RUN git clone --depth=1 https://github.com/scipopt/papilo.git /opt/cuopt-deps/papilo \
     && cd /opt/cuopt-deps/papilo \
     && git fetch --depth=1 origin 741a2b9c8155b249d6df574d758b4d97d4417520 \
@@ -98,11 +107,15 @@ RUN git clone --depth=1 https://github.com/scipopt/papilo.git /opt/cuopt-deps/pa
     && git clone --depth=1 --branch v0.0.8 https://github.com/dance858/PSLP.git /opt/cuopt-deps/pslp \
     && git clone --depth=1 --branch v3.2 https://github.com/p-ranav/argparse.git /opt/cuopt-deps/argparse
 
+# symlink for nvcc binary discovery
+RUN ln -sf /usr/local/cuda /usr/local/cuda-12.9
+
 ENV CUDSS_DIR=/opt/cudss \
     FETCHCONTENT_SOURCE_DIR_PAPILO=/opt/cuopt-deps/papilo \
     FETCHCONTENT_SOURCE_DIR_PSLP=/opt/cuopt-deps/pslp \
     FETCHCONTENT_SOURCE_DIR_ARGPARSE=/opt/cuopt-deps/argparse \
     CUDACXX=/usr/local/cuda/bin/nvcc \
+    PATH="/usr/local/cuda/bin:${PATH}" \
     PARALLEL_LEVEL=2 \
     CMAKE_CUDA_COMPILER_LAUNCHER=ccache \
     CMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -118,12 +131,11 @@ WORKDIR /cuopt
 
 CMD ["/bin/bash", "-c", "\
 echo '' && \
-echo '=== cuOpt 開發容器（Ubuntu 22.04 + GCC 12, < 2GB）===' && \
+echo '=== cuOpt 開發容器（Ubuntu 22.04, GCC 12, < 2GB）===' && \
 echo '  GCC  :' $(gcc --version | head -1) && \
-echo '  nvcc :' $(nvcc --version | grep release | sed 's/.*release //;s/,.*//')  && \
+echo '  nvcc :' $(/usr/local/cuda/bin/nvcc --version | grep release | sed 's/.*release //;s/,.*//')  && \
 echo '  cmake:' $(cmake --version | head -1) && \
 echo '' && \
-echo '  cuopt-build                     # Build C++（第一次 ~40 分，之後秒級）' && \
-echo '  ctest --test-dir cpp/build -j4  # C++ 測試' && \
+echo '  cuopt-build  # Build（第一次 ~40 分，之後秒級）' && \
 echo '' && \
 exec bash"]
