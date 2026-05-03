@@ -1,0 +1,84 @@
+# syntax=docker/dockerfile:1.2
+# cuOpt 開發容器 — 基於官方 nvidia/cuopt image（已核准，不受 2GB 限制）
+#
+# 策略：
+#   - Base: nvidia/cuopt（官方，7.7GB，不受自訂 2GB 限制）
+#   - 只加：GCC 12 + cmake + papilo/pslp/argparse（delta ~500MB << 2GB）
+#   - 同一容器既能 build 又能跑 Python 測試（無需 compat shim 或 ABI 修補）
+#
+# 使用：bash run_dev.sh cuopt-build
+#       bash run_dev.sh pytest python/cuopt/cuopt/tests/
+
+FROM nvidia/cuopt:26.6.0a-cuda12.9-py3.14
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# GCC 12 + build tools（Ubuntu 22.04 標準 repo，無需 PPA）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc-12 \
+        g++-12 \
+        ninja-build \
+        git \
+        ccache \
+        libtbb-dev \
+        libboost-dev \
+        libgmp-dev \
+        libblas-dev \
+        libssl-dev \
+        uuid-dev \
+    && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 120 \
+                           --slave /usr/bin/g++ g++ /usr/bin/g++-12 \
+    && rm -rf /var/lib/apt/lists/*
+
+# cmake 3.30+（官方 image 用 Python 3.14）
+RUN python3 -m pip install --no-cache-dir "cmake>=3.30.4" && \
+    ln -sf /usr/bin/python3 /usr/local/bin/python
+ENV PATH="/usr/local/lib/python3.14/dist-packages/cmake/data/bin:${PATH}"
+
+# CUDSS symlinks（cmake FindCUDSS 期待的目錄結構）
+RUN CUDSS_LIB=$(find /usr/local/lib/python3.14/dist-packages/nvidia -name 'libcudss.so' 2>/dev/null | head -1 | xargs dirname 2>/dev/null) && \
+    CUDSS_INC=$(find /usr -name 'cudss.h' 2>/dev/null | head -1 | xargs dirname 2>/dev/null) && \
+    mkdir -p /opt/cudss && \
+    [ -n "$CUDSS_LIB" ] && ln -sf "$CUDSS_LIB" /opt/cudss/lib || true && \
+    [ -n "$CUDSS_INC" ] && ln -sf "$CUDSS_INC" /opt/cudss/include || true
+
+# 預先 clone 離線 cmake deps
+RUN git clone --depth=1 https://github.com/scipopt/papilo.git /opt/cuopt-deps/papilo \
+    && cd /opt/cuopt-deps/papilo \
+    && git fetch --depth=1 origin 741a2b9c8155b249d6df574d758b4d97d4417520 \
+    && git checkout 741a2b9c8155b249d6df574d758b4d97d4417520 \
+    && git submodule update --init --recursive --depth=1 \
+    && git clone --depth=1 --branch v0.0.8 https://github.com/dance858/PSLP.git /opt/cuopt-deps/pslp \
+    && git clone --depth=1 --branch v3.2 https://github.com/p-ranav/argparse.git /opt/cuopt-deps/argparse
+
+# 官方 image 的 RAPIDS cmake configs 在 dist-packages 下
+# CUDA stubs 讓 cmake 找到 CUDA::cublas 等 targets
+ENV RAPIDS_DIST=/usr/local/lib/python3.14/dist-packages \
+    CUDSS_DIR=/opt/cudss \
+    CUDACXX=/usr/local/cuda/bin/nvcc \
+    PARALLEL_LEVEL=2 \
+    CMAKE_CUDA_COMPILER_LAUNCHER=ccache \
+    CMAKE_C_COMPILER_LAUNCHER=ccache \
+    CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    FETCHCONTENT_SOURCE_DIR_PAPILO=/opt/cuopt-deps/papilo \
+    FETCHCONTENT_SOURCE_DIR_PSLP=/opt/cuopt-deps/pslp \
+    FETCHCONTENT_SOURCE_DIR_ARGPARSE=/opt/cuopt-deps/argparse \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    DEBIAN_FRONTEND=""
+
+COPY ci/docker/build_cuopt.sh /usr/local/bin/cuopt-build
+RUN chmod +x /usr/local/bin/cuopt-build
+
+WORKDIR /cuopt
+
+CMD ["/bin/bash", "-c", "\
+echo '' && \
+echo '=== cuOpt 開發容器（官方 base + GCC 12）===' && \
+echo '  GCC  :' $(gcc --version | head -1) && \
+echo '  nvcc :' $(nvcc --version | grep release | sed 's/.*release //;s/,.*//')  && \
+echo '  cmake:' $(cmake --version | head -1) && \
+echo '' && \
+echo '  cuopt-build                        # build（delta ~500MB 自訂層）' && \
+echo '  pytest python/cuopt/cuopt/tests/   # Python 測試（原生，無需注入）' && \
+echo '' && \
+exec bash"]
