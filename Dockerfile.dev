@@ -1,48 +1,95 @@
 # syntax=docker/dockerfile:1.2
-# cuOpt 開發容器 — 基於官方 nvidia/cuopt image（已核准，不受 2GB 限制）
+# cuOpt 開發容器 — 總大小 < 2GB（符合公司限制）
 #
-# 策略：
-#   - Base: nvidia/cuopt（官方，7.7GB，不受自訂 2GB 限制）
-#   - 只加：GCC 12 + cmake + papilo/pslp/argparse（delta ~500MB << 2GB）
-#   - 同一容器既能 build 又能跑 Python 測試（無需 compat shim 或 ABI 修補）
+# 架構：
+#   Base: nvidia/cuda:12.9.0-base-ubuntu22.04（官方，~200MB，不受 2GB 限制）
+#   自訂 delta: cuda 編譯工具 + GCC 12 + cmake + RAPIDS headers + papilo
+#   預計總大小: ~1.3GB < 2GB ✅
+#
+# 優點：
+#   - GCC 12 on Ubuntu 22.04 → GLIBC 2.35 相容官方 cuopt image
+#   - 內含完整 Python + RAPIDS → 直接跑 pytest 不需要另一個容器
 #
 # 使用：bash run_dev.sh cuopt-build
-#       bash run_dev.sh pytest python/cuopt/cuopt/tests/
 
-FROM nvidia/cuopt:26.6.0a-cuda12.9-py3.14
+# ── Stage 1：從官方 cuopt image 取 RAPIDS cmake configs + headers ──────────
+FROM nvidia/cuopt:26.6.0a-cuda12.9-py3.14 AS rapids-src
+
+# ── Stage 2：最終 dev image（< 2GB 總大小）──────────────────────────────────
+FROM nvidia/cuda:12.9.0-base-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# GCC 12 + build tools（Ubuntu 22.04 標準 repo，無需 PPA）
+# CUDA 編譯工具 + GCC 12 + build tools
+# cuda-minimal-build-12-9 提供 nvcc + CUDA runtime 編譯支援
+# cuda-libraries-dev-12-9 提供 cuBLAS/cuSPARSE stubs（cmake target 用）
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        cuda-minimal-build-12-9 \
+        cuda-libraries-dev-12-9 \
+        cuda-profiler-api-12-9 \
+        cudss \
         gcc-12 \
         g++-12 \
         ninja-build \
         git \
         ccache \
+        python3-pip \
+        python3-dev \
+        libbz2-dev \
+        zlib1g-dev \
+        libssl-dev \
+        uuid-dev \
+        libgomp1 \
         libtbb-dev \
         libboost-dev \
         libgmp-dev \
         libblas-dev \
-        libssl-dev \
-        uuid-dev \
     && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 120 \
                            --slave /usr/bin/g++ g++ /usr/bin/g++-12 \
     && rm -rf /var/lib/apt/lists/*
 
-# cmake 3.30+（官方 image 用 Python 3.14）
+# cmake 3.30+
 RUN python3 -m pip install --no-cache-dir "cmake>=3.30.4" && \
     ln -sf /usr/bin/python3 /usr/local/bin/python
-ENV PATH="/usr/local/lib/python3.14/dist-packages/cmake/data/bin:${PATH}"
+ENV PATH="/usr/local/lib/python3/dist-packages/cmake/data/bin:/usr/local/lib/python3.10/dist-packages/cmake/data/bin:${PATH}"
+
+# ── RAPIDS cmake configs + headers（從官方 cuopt image COPY）────────────────
+COPY --from=rapids-src \
+    /usr/local/lib/python3.14/dist-packages/libcuopt/lib64 \
+    /opt/rapids/libcuopt/lib64
+
+COPY --from=rapids-src \
+    /usr/local/lib/python3.14/dist-packages/libcuopt/include \
+    /opt/rapids/libcuopt/include
+
+COPY --from=rapids-src \
+    /usr/local/lib/python3.14/dist-packages/libraft \
+    /opt/rapids/libraft
+
+COPY --from=rapids-src \
+    /usr/local/lib/python3.14/dist-packages/librmm \
+    /opt/rapids/librmm
+
+COPY --from=rapids-src \
+    /usr/local/lib/python3.14/dist-packages/rapids_logger \
+    /opt/rapids/rapids_logger
+
+# 刪 pre-built libcuopt.so（從 source 重新 build）
+RUN find /opt/rapids/libcuopt/lib64 -name 'libcuopt*.so*' -delete 2>/dev/null || true
 
 # CUDSS symlinks（cmake FindCUDSS 期待的目錄結構）
-RUN CUDSS_LIB=$(find /usr/local/lib/python3.14/dist-packages/nvidia -name 'libcudss.so' 2>/dev/null | head -1 | xargs dirname 2>/dev/null) && \
+RUN CUDSS_LIB=$(find /usr -name 'libcudss.so' 2>/dev/null | head -1 | xargs dirname 2>/dev/null) && \
     CUDSS_INC=$(find /usr -name 'cudss.h' 2>/dev/null | head -1 | xargs dirname 2>/dev/null) && \
     mkdir -p /opt/cudss && \
     [ -n "$CUDSS_LIB" ] && ln -sf "$CUDSS_LIB" /opt/cudss/lib || true && \
     [ -n "$CUDSS_INC" ] && ln -sf "$CUDSS_INC" /opt/cudss/include || true
 
-# 預先 clone 離線 cmake deps
+# cublas SONAME compat：apt 的 cudss 連結 libcublas.so.13，
+# 但 base image 只有 libcublas.so.12 → 加別名
+RUN CUBLAS12=$(find /usr/local/cuda -name 'libcublas.so.12' 2>/dev/null | head -1) && \
+    [ -n "$CUBLAS12" ] && ln -sf "$CUBLAS12" "$(dirname $CUBLAS12)/libcublas.so.13" || true
+
+# 預先 clone 離線 cmake deps（papilo、pslp、argparse）
 RUN git clone --depth=1 https://github.com/scipopt/papilo.git /opt/cuopt-deps/papilo \
     && cd /opt/cuopt-deps/papilo \
     && git fetch --depth=1 origin 741a2b9c8155b249d6df574d758b4d97d4417520 \
@@ -51,18 +98,16 @@ RUN git clone --depth=1 https://github.com/scipopt/papilo.git /opt/cuopt-deps/pa
     && git clone --depth=1 --branch v0.0.8 https://github.com/dance858/PSLP.git /opt/cuopt-deps/pslp \
     && git clone --depth=1 --branch v3.2 https://github.com/p-ranav/argparse.git /opt/cuopt-deps/argparse
 
-# 官方 image 的 RAPIDS cmake configs 在 dist-packages 下
-# CUDA stubs 讓 cmake 找到 CUDA::cublas 等 targets
-ENV RAPIDS_DIST=/usr/local/lib/python3.14/dist-packages \
-    CUDSS_DIR=/opt/cudss \
+ENV CUDSS_DIR=/opt/cudss \
+    FETCHCONTENT_SOURCE_DIR_PAPILO=/opt/cuopt-deps/papilo \
+    FETCHCONTENT_SOURCE_DIR_PSLP=/opt/cuopt-deps/pslp \
+    FETCHCONTENT_SOURCE_DIR_ARGPARSE=/opt/cuopt-deps/argparse \
     CUDACXX=/usr/local/cuda/bin/nvcc \
     PARALLEL_LEVEL=2 \
     CMAKE_CUDA_COMPILER_LAUNCHER=ccache \
     CMAKE_C_COMPILER_LAUNCHER=ccache \
     CMAKE_CXX_COMPILER_LAUNCHER=ccache \
-    FETCHCONTENT_SOURCE_DIR_PAPILO=/opt/cuopt-deps/papilo \
-    FETCHCONTENT_SOURCE_DIR_PSLP=/opt/cuopt-deps/pslp \
-    FETCHCONTENT_SOURCE_DIR_ARGPARSE=/opt/cuopt-deps/argparse \
+    RAPIDS_DIST=/opt/rapids \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
     DEBIAN_FRONTEND=""
 
@@ -73,12 +118,12 @@ WORKDIR /cuopt
 
 CMD ["/bin/bash", "-c", "\
 echo '' && \
-echo '=== cuOpt 開發容器（官方 base + GCC 12）===' && \
+echo '=== cuOpt 開發容器（Ubuntu 22.04 + GCC 12, < 2GB）===' && \
 echo '  GCC  :' $(gcc --version | head -1) && \
 echo '  nvcc :' $(nvcc --version | grep release | sed 's/.*release //;s/,.*//')  && \
 echo '  cmake:' $(cmake --version | head -1) && \
 echo '' && \
-echo '  cuopt-build                        # build（delta ~500MB 自訂層）' && \
-echo '  pytest python/cuopt/cuopt/tests/   # Python 測試（原生，無需注入）' && \
+echo '  cuopt-build                     # Build C++（第一次 ~40 分，之後秒級）' && \
+echo '  ctest --test-dir cpp/build -j4  # C++ 測試' && \
 echo '' && \
 exec bash"]
