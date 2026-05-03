@@ -16,11 +16,13 @@
 
 | Image | 用途 | 類型 | 大小 |
 |---|---|---|---|
-| `nvidia/cuopt:26.6.0a-cuda12.9-py3.14` | cuopt-dev 的基底（Ubuntu 22.04 + Python + RAPIDS） | **官方 NVIDIA** | 7.7GB |
+| `nvidia/cuda:12.9.0-base-ubuntu22.04` | cuopt-dev 的基底（CUDA 執行環境） | **官方 NVIDIA** | ~200MB |
+| `nvidia/cuopt:26.6.0a-cuda12.9-py3.14` | Python 測試環境（提供 RAPIDS cmake headers） | **官方 NVIDIA** | 7.7GB |
 | `workcc/cuopt-src:26.6` | 裝著 source code 的「快遞盒」 | 自訂 | 336MB |
-| `workcc/cuopt-dev:26.6.0a` | 開發容器（GCC 12 + cmake + build 工具） | 自訂 delta | ~500MB |
+| `workcc/cuopt-dev:26.6.0a` | 開發容器（nvcc + GCC 12 + cmake + build 工具） | 自訂 | ~1.3GB |
 
-> `workcc/cuopt-dev` 以官方 `nvidia/cuopt` 為基底，自訂部分只有 ~500MB，符合公司 < 2GB 限制。
+> `workcc/cuopt-dev` 總大小 ~1.3GB < 2GB ✅，符合公司限制。
+> 基底 `nvidia/cuda:12.9.0-base-ubuntu22.04` 和 `nvidia/cuopt` 是官方 NVIDIA image，不受 2GB 限制。
 
 ---
 
