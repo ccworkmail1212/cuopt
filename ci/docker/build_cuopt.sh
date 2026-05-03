@@ -62,6 +62,14 @@ python3 -m pip install --quiet \
     "cython>=3.0.3" \
     "ninja"
 
+# 明確設定 C/C++ 編譯器（Ubuntu 22.04 GCC 12 可能沒有 cc symlink）
+GCC_PATH="$(command -v gcc-12 2>/dev/null || command -v gcc 2>/dev/null)"
+GXX_PATH="$(command -v g++-12 2>/dev/null || command -v g++ 2>/dev/null)"
+export CC="${GCC_PATH}"
+export CXX="${GXX_PATH}"
+# 同時建立 cc/c++ symlink 讓 cmake 子進程也能找到
+[ -n "$GCC_PATH" ] && [ ! -e /usr/bin/cc ] && ln -sf "$GCC_PATH" /usr/bin/cc
+[ -n "$GXX_PATH" ] && [ ! -e /usr/bin/c++ ] && ln -sf "$GXX_PATH" /usr/bin/c++
 export CUDACXX="$(which nvcc)"
 export PARALLEL_LEVEL="${PARALLEL_LEVEL:-1}"
 

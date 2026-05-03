@@ -75,7 +75,7 @@ set(CUOPT_CXX_FLAGS "")
 set(CUOPT_CUDA_FLAGS "")
 
 if (CMAKE_COMPILER_IS_GNUCXX)
-    list(APPEND CUOPT_CXX_FLAGS -Werror -Wno-error=deprecated-declarations -Wno-nonnull)
+    list(APPEND CUOPT_CXX_FLAGS -Werror -Wno-error=deprecated-declarations -Wno-nonnull -Wno-stringop-overflow)
 endif (CMAKE_COMPILER_IS_GNUCXX)
 
 # Papilo pulls in Boost.Multiprecision float128 support, which expects quadmath.h from the GCC
