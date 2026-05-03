@@ -59,9 +59,18 @@ echo "    GPU     : ${GPU_FLAG:-無（無 GPU 模式）}"
 echo ""
 echo "  常用指令："
 echo "    cuopt-build                     # C++ build（~40 分初次，之後秒級）"
+echo "    pytest python/cuopt/...         # Python 測試（build 後直接跑）"
 echo "    cuopt-build --with-tests        # C++ build + C++ 測試（需 GPU）"
 echo "    ctest --test-dir cpp/build -j4  # 執行已 build 的 C++ 測試"
 echo ""
+
+# 若已 build 的 libcuopt.so 存在，mount 覆蓋官方版本讓 Python 測試用自訂版本
+LIBCUOPT_BUILT="$REPO_ROOT/cpp/build/libcuopt.so"
+OFFICIAL_SO="/usr/local/lib/python3.14/dist-packages/libcuopt/lib64/libcuopt.so"
+LIBCUOPT_MOUNT=""
+if [ -f "$LIBCUOPT_BUILT" ]; then
+    LIBCUOPT_MOUNT="-v $LIBCUOPT_BUILT:$OFFICIAL_SO"
+fi
 
 docker run \
     $GPU_FLAG \
@@ -71,6 +80,7 @@ docker run \
     -v "$REPO_ROOT:/cuopt" \
     -v "$CCACHE_VOLUME:/root/.cache/ccache" \
     -v "$REPO_ROOT/ci/docker/build_cuopt.sh:/usr/local/bin/cuopt-build" \
+    $LIBCUOPT_MOUNT \
     --workdir /cuopt \
     -e PARALLEL_LEVEL="${PARALLEL_LEVEL:-$(nproc)}" \
     "$DEV_IMAGE" \
