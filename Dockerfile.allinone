@@ -40,14 +40,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && ln -sf /usr/bin/g++-12 /usr/bin/c++ \
     && rm -rf /var/lib/apt/lists/*
 
-# cmake 3.30+ via pip（官方 apt 版本太舊）
+# cmake 3.30+ + build tools
 RUN python3 -m pip install --no-cache-dir --break-system-packages \
         "cmake>=3.30.4" \
         "rapids-build-backend>=0.4.0,<0.5.0" \
         "scikit-build-core[pyproject]>=0.11.0" \
         "cython>=3.0.3" \
         "ninja"
+
+# pytest（獨立 layer 確保不被 cache 跳過）
+RUN python3 -m pip install --no-cache-dir --break-system-packages \
+        "pytest>=8.0" \
+        "pytest-timeout" \
+        "anyio[trio]" \
+        "pytest-anyio"
 ENV PATH="/usr/local/lib/python3.14/dist-packages/cmake/data/bin:/usr/local/cuda/bin:${PATH}"
+
+# LD_LIBRARY_PATH：讓 cuopt_cli 和 Python 程式不需要手動設定就能找到 CUDA libs
+ENV LD_LIBRARY_PATH="/usr/local/lib/python3.14/dist-packages/nvidia/cublas/lib:\
+/usr/local/lib/python3.14/dist-packages/nvidia/cusparse/lib:\
+/usr/local/lib/python3.14/dist-packages/nvidia/cusolver/lib:\
+/usr/local/lib/python3.14/dist-packages/nvidia/curand/lib:\
+/usr/local/lib/python3.14/dist-packages/nvidia/cuda_runtime/lib:\
+/usr/local/lib/python3.14/dist-packages/nvidia/cu12/lib:\
+/usr/local/lib/python3.14/dist-packages/nvidia/nvjitlink/lib:\
+${LD_LIBRARY_PATH:-}"
 
 # 預先 clone 離線 cmake 依賴
 RUN git clone --depth=1 https://github.com/scipopt/papilo.git /opt/cuopt-deps/papilo \
