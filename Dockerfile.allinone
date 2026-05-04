@@ -1,0 +1,128 @@
+# Dockerfile.allinone — 完整功能 image（改 code + build + run）
+#
+# Base: nvidia/cuopt:26.6.0a-cuda12.9-py3.14
+#   已包含：Python 3.14、RAPIDS、cuOpt Python packages、Ubuntu 22.04
+# 加裝：GCC 12、nvcc、cmake、ninja、ccache、papilo/pslp/argparse
+#
+# 使用：
+#   docker build -f Dockerfile.allinone -t cuopt-allinone:26.6 .
+#   docker run --gpus all -it -v $(pwd):/cuopt -v cuopt-ccache:/root/.cache/ccache \
+#       cuopt-allinone:26.6
+
+FROM nvidia/cuopt:26.6.0a-cuda12.9-py3.14
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Build tools：nvcc + GCC 12 + 必要 libs
+# cuda-libraries-dev 不需要：nvidia/cuopt base 已有所有 CUDA runtime .so
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        cuda-nvcc-12-9 \
+        cuda-cudart-dev-12-9 \
+        cuda-crt-12-9 \
+        cuda-profiler-api-12-9 \
+        gcc-12 \
+        g++-12 \
+        ninja-build \
+        git \
+        ccache \
+        libbz2-dev \
+        zlib1g-dev \
+        libssl-dev \
+        uuid-dev \
+        libgomp1 \
+        libtbb-dev \
+        libboost-dev \
+        libgmp-dev \
+        libblas-dev \
+    && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 120 \
+                           --slave /usr/bin/g++ g++ /usr/bin/g++-12 \
+    && ln -sf /usr/bin/gcc-12 /usr/bin/cc \
+    && ln -sf /usr/bin/g++-12 /usr/bin/c++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# cmake 3.30+ via pip（官方 apt 版本太舊）
+RUN python3 -m pip install --no-cache-dir --break-system-packages \
+        "cmake>=3.30.4" \
+        "rapids-build-backend>=0.4.0,<0.5.0" \
+        "scikit-build-core[pyproject]>=0.11.0" \
+        "cython>=3.0.3" \
+        "ninja"
+ENV PATH="/usr/local/lib/python3.14/dist-packages/cmake/data/bin:/usr/local/cuda/bin:${PATH}"
+
+# 預先 clone 離線 cmake 依賴
+RUN git clone --depth=1 https://github.com/scipopt/papilo.git /opt/cuopt-deps/papilo \
+    && cd /opt/cuopt-deps/papilo \
+    && git fetch --depth=1 origin 741a2b9c8155b249d6df574d758b4d97d4417520 \
+    && git checkout 741a2b9c8155b249d6df574d758b4d97d4417520 \
+    && git submodule update --init --recursive --depth=1 \
+    && git clone --depth=1 --branch v0.0.8 https://github.com/dance858/PSLP.git /opt/cuopt-deps/pslp \
+    && git clone --depth=1 --branch v3.2 https://github.com/p-ranav/argparse.git /opt/cuopt-deps/argparse
+
+# CUDSS symlinks（CUDSS 在 Python dist-packages，cmake 需要 /opt/cudss/{lib,include}）
+# include 直接 symlink 整個目錄（cudss.h 會 include 同目錄的其他 .h）
+RUN CUDSS_PY=/usr/local/lib/python3.14/dist-packages/nvidia/cu12 && \
+    mkdir -p /opt/cudss/lib && \
+    ln -sf ${CUDSS_PY}/lib/libcudss.so.0              /opt/cudss/lib/libcudss.so.0 && \
+    ln -sf ${CUDSS_PY}/lib/libcudss.so.0              /opt/cudss/lib/libcudss.so && \
+    ln -sf ${CUDSS_PY}/lib/libcudss_mtlayer_gomp.so.0 /opt/cudss/lib/libcudss_mtlayer_gomp.so.0 && \
+    ln -sf ${CUDSS_PY}/include                        /opt/cudss/include
+
+# CUDA library + header symlinks：
+# nvidia/cuopt 把 CUDA libs/headers 裝在 pip packages → symlink 到 CUDA toolkit 標準路徑
+# 讓 cmake CUDA:: targets 和 nvcc -include 都能找到
+RUN NVPY=/usr/local/lib/python3.14/dist-packages/nvidia && \
+    CUDA_LIB=/usr/local/cuda/targets/x86_64-linux/lib && \
+    CUDA_INC=/usr/local/cuda/targets/x86_64-linux/include && \
+    mkdir -p ${CUDA_LIB} ${CUDA_INC} && \
+    # library symlinks（不帶版本號，cmake FindXxx 需要）
+    for spec in \
+        "cublas/lib/libcublas.so.12:libcublas.so" \
+        "cublas/lib/libcublasLt.so.12:libcublasLt.so" \
+        "cusparse/lib/libcusparse.so.12:libcusparse.so" \
+        "cusolver/lib/libcusolver.so.11:libcusolver.so" \
+        "curand/lib/libcurand.so.10:libcurand.so" \
+        "cuda_runtime/lib/libcudart.so.12:libcudart.so" \
+        "nvjitlink/lib/libnvJitLink.so.12:libnvJitLink.so" \
+    ; do \
+        src="${NVPY}/${spec%%:*}"; dst="${CUDA_LIB}/${spec##*:}"; \
+        [ -f "$src" ] && ln -sf "$src" "$dst" || true; \
+    done && \
+    # header symlinks（cublas_v2.h / cusparse.h / curand.h / cusolver.h）
+    for pkg in cublas cusparse curand cusolver; do \
+        inc="${NVPY}/${pkg}/include"; \
+        [ -d "$inc" ] && for h in "$inc"/*.h; do \
+            [ -f "$h" ] && ln -sf "$h" "${CUDA_INC}/$(basename $h)" || true; \
+        done; \
+    done
+
+# RAPIDS_DIST 指向官方 image 的 Python 套件目錄（含 libcuopt cmake configs）
+ENV CUDSS_DIR=/opt/cudss \
+    FETCHCONTENT_SOURCE_DIR_PAPILO=/opt/cuopt-deps/papilo \
+    FETCHCONTENT_SOURCE_DIR_PSLP=/opt/cuopt-deps/pslp \
+    FETCHCONTENT_SOURCE_DIR_ARGPARSE=/opt/cuopt-deps/argparse \
+    CUDACXX=/usr/local/cuda/bin/nvcc \
+    PARALLEL_LEVEL=2 \
+    CMAKE_CUDA_COMPILER_LAUNCHER=ccache \
+    CMAKE_C_COMPILER_LAUNCHER=ccache \
+    CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    RAPIDS_DIST=/usr/local/lib/python3.14/dist-packages \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    DEBIAN_FRONTEND=""
+
+COPY ci/docker/build_cuopt.sh /usr/local/bin/cuopt-build
+RUN chmod +x /usr/local/bin/cuopt-build
+
+WORKDIR /cuopt
+
+CMD ["/bin/bash", "-c", "\
+echo '' && \
+echo '=== cuOpt All-in-One（改 code + build + run）===' && \
+echo '  GCC  :' $(gcc --version | head -1) && \
+echo '  nvcc :' $(nvcc --version | grep release | sed 's/.*release //;s/,.*//')  && \
+echo '  cmake:' $(cmake --version | head -1) && \
+echo '  python:' $(python3 --version) && \
+echo '' && \
+echo '  cuopt-build                              # 重新編譯 C++ library' && \
+echo '  python3 -m pytest python/cuopt/cuopt/tests/ -v  # Python 測試' && \
+echo '' && \
+exec bash"]

@@ -1,118 +1,118 @@
 # cuOpt Docker 開發指南
 
-## 概念說明
+## 總覽
 
-你只需要在**自己的電腦（host）**上操作。`bash run_dev.sh` 會自動啟動和關閉 Docker 容器，你不需要手動管理容器。
+`workcc/cuopt-allinone:26.6` 是一個完整的 cuOpt 開發 image，包含：
+- **改 code**：掛入 source code 用任何編輯器修改
+- **Build code**：用 `cuopt-build` 重編 C++ library
+- **Run code**：用官方 Python 環境跑測試
 
 ```
-你的電腦（host）
-  ├── ~/cuopt/            ← source code 在這裡，直接用編輯器改
-  └── bash run_dev.sh ... ← 自動啟動容器執行，完成後自動關閉
+你的電腦
+  ├── ~/cuopt/          ← source code（掛入容器）
+  └── docker run ...    ← 啟動容器執行，完成後自動關閉
 ```
 
 ---
 
-## 需要的 Docker Images（帶進公司）
+## 需要的 Docker Images
 
-| Image | 用途 | 類型 | 大小 |
+| Image | 用途 | 大小 | 類型 |
 |---|---|---|---|
-| `nvidia/cuda:12.9.0-base-ubuntu22.04` | cuopt-dev 的基底（CUDA 執行環境） | **官方 NVIDIA** | ~200MB |
-| `nvidia/cuopt:26.6.0a-cuda12.9-py3.14` | Python 測試環境（提供 RAPIDS cmake headers） | **官方 NVIDIA** | 7.7GB |
-| `workcc/cuopt-src:26.6` | 裝著 source code 的「快遞盒」 | 自訂 | 336MB |
-| `workcc/cuopt-dev:26.6.0a` | 開發容器（nvcc + GCC 12 + cmake + build 工具） | 自訂 | ~1.3GB |
+| `workcc/cuopt-allinone:26.6` | **完整開發環境**（改+build+run） | 8.58GB | 自訂（基於官方） |
+| `nvidia/cuopt:26.6.0a-cuda12.9-py3.14` | allinone 的 base（自動從 Hub 拉取） | 7.74GB | 官方 NVIDIA |
 
-> `workcc/cuopt-dev` 總大小 ~1.3GB < 2GB ✅，符合公司限制。
-> 基底 `nvidia/cuda:12.9.0-base-ubuntu22.04` 和 `nvidia/cuopt` 是官方 NVIDIA image，不受 2GB 限制。
+> `workcc/cuopt-allinone:26.6` 基於 `nvidia/cuopt` 官方 image。
 
 ---
 
-## 完整操作步驟
+## 快速開始
 
-### 步驟 0：確認 Docker 有在執行
+### 步驟 0：確認 Docker + GPU 正常
 
 ```bash
 docker info
-# 看到 "Server Version: ..." 代表正常
+nvidia-smi
 ```
 
-### 步驟 1：取出 source code（只做一次）
+### 步驟 1：取得 source code（只做一次）
 
 ```bash
 mkdir -p ~/cuopt && cd ~
 
-# 從 cuopt-src image 解壓 source code 到 ~/cuopt/
-docker run --rm workcc/cuopt-src:26.6 \
-    tar cf - /cuopt | tar xf - -C ~/
+# 方法 A：從 Git clone（有網路）
+git clone https://github.com/ccworkmail1212/cuopt.git ~/cuopt
 
-cd ~/cuopt
-ls cpp/src/    # 應該看到 routing、math_optimization 等目錄
+# 方法 B：從 cuopt-src image 解壓（離線）
+docker run --rm workcc/cuopt-src:26.6 tar cf - /cuopt | tar xf - -C ~/
 ```
 
-> 之後就不再需要 `workcc/cuopt-src`，它只是個「快遞盒」。
+### 步驟 2：第一次 Build（約 40 分鐘）
+
+```bash
+cd ~/cuopt
+
+docker run --gpus all --rm \
+    -v $(pwd):/cuopt \
+    -v cuopt-ccache:/root/.cache/ccache \
+    workcc/cuopt-allinone:26.6 \
+    cuopt-build
+```
+
+第一次會下載 CCCL 依賴（~200MB）並完整編譯 175 個 CUDA 檔案。之後改幾個檔案只需幾秒到幾分鐘。
 
 ---
 
-### 每次改 code 的流程
+## 每次改 code 的完整流程
 
-#### 第 1 步：改 code（在你的電腦上直接改，不需要進容器）
+### 1. 改 code（在你的電腦上直接改）
 
 ```bash
 # 用任何編輯器修改 C++ 原始碼
 vim ~/cuopt/cpp/src/routing/local_search/compute_insertions.cu
-
-# 或用 VSCode、gedit 等，只要改 ~/cuopt/cpp/src/ 下的檔案
 ```
 
-#### 第 2 步：Build（自動啟動容器編譯，完成後容器自動關閉）
+### 2. Build（只重編有改的檔案）
 
 ```bash
 cd ~/cuopt
-bash run_dev.sh cuopt-build
-
-# 第一次：約 40 分鐘（編譯 141 個 CUDA 檔案）
-# 之後改幾個檔案：幾秒到幾分鐘（ccache 快取加速）
-# 成功時最後顯示：=== C++ build complete ===
+docker run --gpus all --rm \
+    -v $(pwd):/cuopt \
+    -v cuopt-ccache:/root/.cache/ccache \
+    workcc/cuopt-allinone:26.6 \
+    cuopt-build
 ```
 
-#### 第 3 步：驗證（自動啟動容器跑測試，完成後容器自動關閉）
-
-```bash
-# Python 測試
-bash run_dev.sh pytest python/cuopt/cuopt/tests/ -v
-
-# 只跑特定測試
-bash run_dev.sh pytest python/cuopt/cuopt/tests/lp/ -v
-
-# C++ 測試（需要 GPU）
-bash run_dev.sh cuopt-build --with-tests
-bash run_dev.sh ctest --test-dir cpp/build -j4
+成功輸出：
+```
+[1/4] Building CXX object ...version_info.cpp.o    ← 只編有改的
+[2/4] Linking CXX shared library libcuopt.so
+=== C++ build complete ===
+  libcuopt.so  : cpp/build/libcuopt.so
 ```
 
-#### 互動模式（進入容器自己操作）
+新的 `libcuopt.so` 自動複製進 Python package 路徑，下一步的 Python 測試會直接用新 binary。
+
+### 3. 驗證（跑 Python）
 
 ```bash
-bash run_dev.sh
-# 現在你在容器內，可以：
+cd ~/cuopt
+
+# 互動進入容器
+docker run --gpus all --rm -it \
+    -v $(pwd):/cuopt \
+    workcc/cuopt-allinone:26.6
+
+# 容器內執行：
 python3 -c "import libcuopt; print(libcuopt.__version__)"
-python3 my_script.py
-exit   # 離開容器，回到你的電腦
+python3 your_script.py
 ```
 
----
-
-### 完整範例：改 routing 邏輯並驗證
+### 4. 確認改動確實在 binary 裡
 
 ```bash
-cd ~/cuopt
-
-# 1. 改 code
-vim cpp/src/routing/local_search/compute_insertions.cu
-
-# 2. Build（只重編有改的檔案，通常 < 2 分鐘）
-bash run_dev.sh cuopt-build
-
-# 3. 跑 routing 測試確認改動有效
-bash run_dev.sh pytest python/cuopt/cuopt/tests/routing/ -v
+# 方法：在 C++ 加一個獨特字串，build 後用 strings 確認
+strings cpp/build/libcuopt.so | grep "你的字串"
 ```
 
 ---
@@ -121,56 +121,67 @@ bash run_dev.sh pytest python/cuopt/cuopt/tests/routing/ -v
 
 ```bash
 # Build
-bash run_dev.sh cuopt-build
+docker run --gpus all --rm \
+    -v $(pwd):/cuopt -v cuopt-ccache:/root/.cache/ccache \
+    workcc/cuopt-allinone:26.6 cuopt-build
 
-# Python 測試（全部）
-bash run_dev.sh pytest python/cuopt/cuopt/tests/
+# 互動模式（進入容器）
+docker run --gpus all --rm -it \
+    -v $(pwd):/cuopt -v cuopt-ccache:/root/.cache/ccache \
+    workcc/cuopt-allinone:26.6
 
-# Python 測試（指定目錄）
-bash run_dev.sh pytest python/cuopt/cuopt/tests/lp/ -v
+# 跑 Python 腳本
+docker run --gpus all --rm \
+    -v $(pwd):/cuopt \
+    workcc/cuopt-allinone:26.6 \
+    python3 my_script.py
 
-# C++ 測試
-bash run_dev.sh ctest --test-dir cpp/build -j4
-
-# 互動進入容器
-bash run_dev.sh
-
-# Build + C++ 測試（一起）
-bash run_dev.sh cuopt-build --with-tests
+# 清除 ccache（build 出錯想從頭）
+docker volume rm cuopt-ccache
 ```
 
 ---
 
-## 三個 Image 的分工
+## 離線環境（公司內網）
+
+所有操作**不需要網路**（第一次 build 除外）：
+- Build 工具和 Python 環境在 image 裡
+- papilo/pslp/argparse 已預先 clone 在 image 中
+- CCCL 第一次 build 後存在 `cpp/build/_deps/`（掛入 volume 保留）
+- ccache 存在 Docker volume `cuopt-ccache`，重開機後仍有效
+
+**第一次 build 需要網路**（下載 CCCL）。建議在有網路的環境先 build 一次，讓 `cpp/build/_deps/` 存在，再帶進公司。
+
+---
+
+## Image 內容
 
 ```
-workcc/cuopt-src:26.6
-  → 只用一次：解壓 source code 到 ~/cuopt/
-  → 之後不需要
-
-workcc/cuopt-dev:26.6.0a
-  → 所有開發工作（build + test）
-  → 基底：nvidia/cuopt（官方，Ubuntu 22.04 + Python 3.14 + RAPIDS）
-  → 自訂：GCC 12、cmake、papilo/pslp/argparse 等 build 工具
-
-nvidia/cuopt:26.6.0a-cuda12.9-py3.14
-  → cuopt-dev 的基底（你不會直接用它）
-  → 官方 NVIDIA，公司已核准
+workcc/cuopt-allinone:26.6
+  FROM nvidia/cuopt:26.6.0a-cuda12.9-py3.14（官方）
+    Python 3.14 + RAPIDS + cuOpt Python packages 26.06.00a150
+  加裝：
+    GCC 12.3 + nvcc 12.9 + cmake 4.3 + ninja + ccache
+    cuda-nvcc-12-9 + cuda-cudart-dev-12-9 + cuda-profiler-api-12-9
+    離線依賴：papilo + PSLP v0.0.8 + argparse v3.2
+    CUDA symlinks：cublas/cusparse/curand/cusolver headers + libs
+    CUDSS symlinks：/opt/cudss → nvidia cu12 package
 ```
 
 ---
 
-## 離線環境注意事項
+## 已知 GCC 12 相容性修復（已寫入 source）
 
-所有操作**不需要網路**：
-- Build 工具和依賴都在 `workcc/cuopt-dev` image 裡
-- papilo、pslp、argparse 已預先 clone 在 image 中
-- ccache 快取存在 Docker volume `cuopt-ccache`，重開機後仍有效
+| 問題 | 修復位置 |
+|------|----------|
+| papilo `-Werror=nonnull` false positive | `cpp/CMakeLists.txt:78` |
+| papilo fmt `-Werror=stringop-overflow=` | `cpp/CMakeLists.txt:78` |
+| `__builtin_cpu_is("graniterapids*")` GCC 12 不支援 | `cpp/src/utilities/version_info.cpp` |
+| `__builtin_cpu_is("sierraforest/grandridge")` 同上 | `cpp/src/utilities/version_info.cpp` |
 
 ---
 
 ## Repositories
 
 - Source code：https://github.com/ccworkmail1212/cuopt
-- Docker 腳本：https://github.com/ccworkmail1212/cuopt-docker
 - Docker Hub：https://hub.docker.com/u/workcc
