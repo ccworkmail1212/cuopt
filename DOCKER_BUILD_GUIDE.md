@@ -93,19 +93,23 @@ docker run --gpus all --rm \
 
 新的 `libcuopt.so` 自動複製進 Python package 路徑，下一步的 Python 測試會直接用新 binary。
 
-### 3. 驗證（跑 Python）
+### 3. 驗證（跑 Python 或測試）
 
 ```bash
 cd ~/cuopt
 
-# 互動進入容器
+# 互動進入容器（pytest、cuopt_cli 都已內建，不需要額外安裝）
 docker run --gpus all --rm -it \
     -v $(pwd):/cuopt \
     workcc/cuopt-allinone:26.6
 
 # 容器內執行：
 python3 -c "import libcuopt; print(libcuopt.__version__)"
+python3 -m pytest python/cuopt_self_hosted/tests/ -v
 python3 your_script.py
+
+# 直接跑 CLI solver（不需設定 LD_LIBRARY_PATH）
+./cpp/build/cuopt_cli datasets/linear_programming/good-mps-some-var-bounds.mps
 ```
 
 ### 4. 確認改動確實在 binary 裡
@@ -163,10 +167,14 @@ workcc/cuopt-allinone:26.6
   加裝：
     GCC 12.3 + nvcc 12.9 + cmake 4.3 + ninja + ccache
     cuda-nvcc-12-9 + cuda-cudart-dev-12-9 + cuda-profiler-api-12-9
+    pytest 9.0+ + pytest-timeout（測試框架，已內建）
     離線依賴：papilo + PSLP v0.0.8 + argparse v3.2
     CUDA symlinks：cublas/cusparse/curand/cusolver headers + libs
     CUDSS symlinks：/opt/cudss → nvidia cu12 package
+    LD_LIBRARY_PATH：預設包含所有 nvidia pip package lib 路徑
 ```
+
+> **完全自給自足**：image 帶進公司後不需要 `pip install` 任何套件，也不需要手動設定環境變數。
 
 ---
 
