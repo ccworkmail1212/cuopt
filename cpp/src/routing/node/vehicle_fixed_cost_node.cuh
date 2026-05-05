@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -15,14 +15,20 @@ template <typename i_t, typename f_t>
 class vehicle_fixed_cost_node_t {
  public:
   /*! \brief { Calculate next node forward gathered distance data based on actual node} */
-  void HDI calculate_forward([[maybe_unused]] vehicle_fixed_cost_node_t& next,
-                             [[maybe_unused]] f_t vehicle_fixed_cost_between) const noexcept
+  template <bool is_device = true>
+  void HDI
+  calculate_forward([[maybe_unused]] vehicle_fixed_cost_node_t& next,
+                    [[maybe_unused]] f_t vehicle_fixed_cost_between,
+                    [[maybe_unused]] const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
   }
 
   /*! \brief { Calculate prev node gathered distance backward data based on actual node} */
-  void HDI calculate_backward([[maybe_unused]] vehicle_fixed_cost_node_t& prev,
-                              [[maybe_unused]] f_t vehicle_fixed_cost_between) const noexcept
+  template <bool is_device = true>
+  void HDI calculate_backward(
+    [[maybe_unused]] vehicle_fixed_cost_node_t& prev,
+    [[maybe_unused]] f_t vehicle_fixed_cost_between,
+    [[maybe_unused]] const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
   }
 

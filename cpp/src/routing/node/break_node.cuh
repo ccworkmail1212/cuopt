@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -25,13 +25,21 @@ class break_node_t {
   i_t breaks_backward = 0;
 
   /*! \brief { Calculate next node forward gathered breaks data based on actual node} */
-  void HDI calculate_forward(break_node_t& next, i_t breaks_in_between) const noexcept
+  template <bool is_device = true>
+  void HDI
+  calculate_forward(break_node_t& next,
+                    i_t breaks_in_between,
+                    [[maybe_unused]] const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
     next.breaks_forward = breaks_forward + breaks_in_between;
   }
 
   /*! \brief { Calculate prev node gathered breaks backward data based on actual node} */
-  void HDI calculate_backward(break_node_t& prev, double breaks_in_between) const noexcept
+  template <bool is_device = true>
+  void HDI calculate_backward(
+    break_node_t& prev,
+    double breaks_in_between,
+    [[maybe_unused]] const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
     prev.breaks_backward = breaks_backward + breaks_in_between;
   }

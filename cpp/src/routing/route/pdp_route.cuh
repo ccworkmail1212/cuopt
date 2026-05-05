@@ -106,13 +106,10 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
                                                               bool is_tsp = false)
     {
       view_t v;
-
-      v.node_info =
-        raft::device_span<NodeInfo<i_t>>{(NodeInfo<i_t>*)shmem, (size_t)n_nodes_route + 1};
-      v.brother_info = raft::device_span<NodeInfo<i_t>>{&v.node_info.data()[n_nodes_route + 1],
-                                                        (size_t)n_nodes_route + 1};
-
-      i_t* sh_ptr = (i_t*)&v.brother_info.data()[n_nodes_route + 1];
+      i_t* sh_ptr                      = shmem;
+      thrust::tie(v.node_info, sh_ptr) = wrap_ptr_as_span<NodeInfo<i_t>>(sh_ptr, n_nodes_route + 1);
+      thrust::tie(v.brother_info, sh_ptr) =
+        wrap_ptr_as_span<NodeInfo<i_t>>(sh_ptr, n_nodes_route + 1);
       return thrust::make_tuple(v, sh_ptr);
     }
 
@@ -139,8 +136,9 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
   HDI static size_t get_shared_size(i_t route_size, bool is_tsp = false)
   {
     // node, brother
-    size_t byte_size = request_info_t<i_t, REQUEST>::size() * route_size * sizeof(NodeInfo<i_t>);
-    return raft::alignTo(byte_size, sizeof(double));
+    size_t byte_size = request_info_t<i_t, REQUEST>::size() *
+                       raft::alignTo(route_size * sizeof(NodeInfo<i_t>), sizeof(double));
+    return byte_size;
   }
 
   // node ids
@@ -253,9 +251,13 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
   HDI static size_t get_shared_size(i_t route_size, bool is_tsp = false)
   {
     // node, brother
-    size_t byte_size = request_info_t<i_t, REQUEST>::size() * route_size * sizeof(NodeInfo<i_t>);
-    if (is_tsp) { byte_size += tsp_route_t<i_t, f_t>::get_shared_size(route_size); }
-    return raft::alignTo(byte_size, sizeof(double));
+    size_t byte_size = request_info_t<i_t, REQUEST>::size() *
+                       raft::alignTo(route_size * sizeof(NodeInfo<i_t>), sizeof(double));
+    if (is_tsp) {
+      byte_size +=
+        raft::alignTo(tsp_route_t<i_t, f_t>::get_shared_size(route_size), sizeof(double));
+    }
+    return byte_size;
   }
 
   rmm::device_uvector<NodeInfo<i_t>> node_info;

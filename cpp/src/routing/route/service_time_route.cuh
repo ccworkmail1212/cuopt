@@ -114,12 +114,12 @@ class service_time_route_t {
       i_t* shmem, const service_time_dimension_info_t dim_info, i_t n_nodes_route)
     {
       view_t v;
-      v.dim_info             = dim_info;
-      v.service_time_forward = raft::device_span<double>{(double*)shmem, (size_t)n_nodes_route + 1};
-      v.service_time_backward = raft::device_span<double>{
-        (double*)&v.service_time_forward.data()[n_nodes_route + 1], (size_t)n_nodes_route + 1};
-
-      i_t* sh_ptr = (i_t*)&v.service_time_backward.data()[n_nodes_route + 1];
+      i_t* sh_ptr = shmem;
+      v.dim_info  = dim_info;
+      thrust::tie(v.service_time_forward, sh_ptr) =
+        wrap_ptr_as_span<double>(sh_ptr, n_nodes_route + 1);
+      thrust::tie(v.service_time_backward, sh_ptr) =
+        wrap_ptr_as_span<double>(sh_ptr, n_nodes_route + 1);
       return thrust::make_tuple(v, sh_ptr);
     }
 
@@ -149,7 +149,7 @@ class service_time_route_t {
                                     [[maybe_unused]] service_time_dimension_info_t dim_info)
   {
     // forward, backward
-    return 2 * route_size * sizeof(double);
+    return 2 * raft::alignTo(route_size * sizeof(double), sizeof(double));
   }
 
   service_time_dimension_info_t dim_info;

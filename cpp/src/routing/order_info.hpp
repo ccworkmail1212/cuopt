@@ -28,7 +28,9 @@ class order_info_t {
       v_is_pickup_index_(num_orders, handle_ptr->get_stream()),
       v_earliest_time_(num_orders, handle_ptr->get_stream()),
       v_latest_time_(num_orders, handle_ptr->get_stream()),
-      v_prizes_(num_orders, handle_ptr->get_stream())
+      v_prizes_(num_orders, handle_ptr->get_stream()),
+      v_order_weights_(0, handle_ptr->get_stream()),
+      v_order_due_times_(0, handle_ptr->get_stream())
   {
   }
 
@@ -53,6 +55,8 @@ class order_info_t {
       v_is_pickup_index_.resize(size, stream);
     }
     v_prizes_.resize(size, stream);
+    if (!v_order_weights_.is_empty()) { v_order_weights_.resize(size, stream); }
+    if (!v_order_due_times_.is_empty()) { v_order_due_times_.resize(size, stream); }
   }
 
   bool is_pdp() const { return !v_pair_indices_.is_empty(); }
@@ -64,6 +68,8 @@ class order_info_t {
     h.latest_time     = cuopt::host_copy(v_latest_time_, stream);
     h.demand          = cuopt::host_copy(v_demand_, stream);
     h.prizes          = cuopt::host_copy(v_prizes_, stream);
+    h.order_weights   = cuopt::host_copy(v_order_weights_, stream);
+    h.order_due_times = cuopt::host_copy(v_order_due_times_, stream);
     h.order_locations = cuopt::host_copy(v_order_locations_, stream);
     h.depot_included  = depot_included_;
     return h;
@@ -79,6 +85,8 @@ class order_info_t {
     std::vector<i_t> latest_time;
     std::vector<demand_i_t> demand;
     std::vector<f_t> prizes;
+    std::vector<i_t> order_weights;
+    std::vector<i_t> order_due_times;
     std::vector<i_t> order_locations;
     bool depot_included;
   };
@@ -110,6 +118,8 @@ class order_info_t {
     raft::device_span<const i_t> earliest_time;
     raft::device_span<const i_t> latest_time;
     raft::device_span<const f_t> prizes;
+    raft::device_span<const i_t> order_weights;
+    raft::device_span<const i_t> order_due_times;
   };
 
   view_t view() const
@@ -127,7 +137,11 @@ class order_info_t {
       raft::device_span<const i_t>{v_earliest_time_.data(), v_earliest_time_.size()};
     v.latest_time = raft::device_span<const i_t>{v_latest_time_.data(), v_latest_time_.size()};
     v.prizes      = raft::device_span<const f_t>{v_prizes_.data(), v_prizes_.size()};
-    v.nrequests   = get_num_requests();
+    v.order_weights =
+      raft::device_span<const i_t>{v_order_weights_.data(), v_order_weights_.size()};
+    v.order_due_times =
+      raft::device_span<const i_t>{v_order_due_times_.data(), v_order_due_times_.size()};
+    v.nrequests = get_num_requests();
     return v;
   }
 
@@ -142,6 +156,8 @@ class order_info_t {
   rmm::device_uvector<i_t> v_earliest_time_;
   rmm::device_uvector<i_t> v_latest_time_;
   rmm::device_uvector<f_t> v_prizes_;
+  rmm::device_uvector<i_t> v_order_weights_;
+  rmm::device_uvector<i_t> v_order_due_times_;
 };
 
 /**

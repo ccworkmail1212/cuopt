@@ -867,9 +867,7 @@ struct solve {
             temp_pair.first, target_vehicle_ids_, time_limit, final_weights, timer);
           first_gen = false;
         }
-        // increase the solution generation time if we didn't find
-        if (!temp_pair.first.is_feasible() && !injection_state) { sol_gen_time += 20; }
-
+        
         bool is_feasible_before_improve = temp_pair.first.is_feasible();
 
         lm.improve(temp_pair.first, final_weights, timer.remaining_time());

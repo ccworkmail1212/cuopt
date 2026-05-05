@@ -872,9 +872,10 @@ class route_t {
   HDI size_t static get_shared_size(i_t route_size, enabled_dimensions_t dimensions_info)
   {
     // everything that is stored in rmm::device_scalar should be stored in shared
-    size_t sz = 3 * sizeof(i_t)  // route_id, vehicle_id, n_nodes
-                + sizeof(infeasible_cost_t) +
-                sizeof(objective_cost_t);  // infeasibility cost, objective cost
+    size_t sz = raft::alignTo(3 * sizeof(i_t), sizeof(double))  // route_id, vehicle_id, n_nodes
+                + raft::alignTo(sizeof(infeasible_cost_t), sizeof(double)) +
+                raft::alignTo(sizeof(objective_cost_t),
+                              sizeof(double));  // infeasibility cost, objective cost
     sz += dimensions_route_t<i_t, f_t, REQUEST>::get_shared_size(route_size, dimensions_info);
     return sz;
   }

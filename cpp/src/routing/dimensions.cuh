@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -28,6 +28,7 @@ enum class dim_t {
   MISMATCH,
   BREAK,
   VEHICLE_FIXED_COST,
+  SOFT_TIME,
   SIZE
 };
 
@@ -215,6 +216,7 @@ struct service_time_dimension_info_t {
 
 struct mismatch_dimension_info_t {
   bool has_vehicle_order_match = false;
+  bool has_vehicle_order_cost  = false;
   constexpr bool has_constraints() const { return has_vehicle_order_match; }
 };
 
@@ -225,6 +227,11 @@ struct break_dimension_info_t {
 
 struct vehicle_fixed_cost_dimension_info_t {
   constexpr bool has_constraints() const { return false; };
+};
+
+struct soft_time_dimension_info_t {
+  bool has_lateness = false;
+  HDI constexpr bool has_constraints() const { return false; }
 };
 
 /**
@@ -257,6 +264,8 @@ static HDI const auto& get_dimension_of(const T& obj) noexcept
     return obj.break_dim;
   } else if constexpr (I == dim_t::VEHICLE_FIXED_COST) {
     return obj.vehicle_fixed_cost_dim;
+  } else if constexpr (I == dim_t::SOFT_TIME) {
+    return obj.soft_time_dim;
   }
 }
 
@@ -294,6 +303,8 @@ constexpr auto dim_to_string() noexcept
     return "Break dimension";
   } else if constexpr (I == (int)dim_t::VEHICLE_FIXED_COST) {
     return "Vehicle cost dimension";
+  } else if constexpr (I == (int)dim_t::SOFT_TIME) {
+    return "Soft time dimension";
   }
 }
 
@@ -404,6 +415,7 @@ class enabled_dimensions_t {
   mismatch_dimension_info_t mismatch_dim;
   break_dimension_info_t break_dim;
   vehicle_fixed_cost_dimension_info_t vehicle_fixed_cost_dim;
+  soft_time_dimension_info_t soft_time_dim;
 
   objective_cost_t objective_weights;
   bool is_tsp{false};
@@ -414,8 +426,8 @@ class enabled_dimensions_t {
   static_assert((size_t)dim_t::SIZE < 32u, "Use higher precision integer!");
   uint32_t hash = 0;
 
-  static_assert((size_t)objective_t::SIZE < 8u, "Use higher precision integer!");
-  uint8_t obj_hash = 0;
+  static_assert((size_t)objective_t::SIZE <= 16u, "Use higher precision integer!");
+  uint16_t obj_hash = 0;
 };
 
 }  // namespace detail

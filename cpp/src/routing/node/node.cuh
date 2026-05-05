@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -14,6 +14,7 @@
 #include "pdp_node.cuh"
 #include "prize_node.cuh"
 #include "service_time_node.cuh"
+#include "soft_time_node.cuh"
 #include "tasks_node.cuh"
 #include "time_node.cuh"
 #include "vehicle_fixed_cost_node.cuh"
@@ -68,7 +69,7 @@ class node_t {
     loop_over_dimensions(dimensions_info, [&](auto I) {
       double arc_value = get_arc_of_dimension<i_t, f_t, I, is_device>(
         request.info, next_node.request.info, vehicle_info);
-      get_dimension<I>().calculate_forward(next_node.get_dimension<I>(), arc_value);
+      get_dimension<I>().calculate_forward(next_node.get_dimension<I>(), arc_value, vehicle_info);
     });
   }
 
@@ -113,7 +114,7 @@ class node_t {
     loop_over_dimensions(dimensions_info, [&](auto I) {
       double arc_value =
         get_arc_of_dimension<i_t, f_t, I>(prev_node.request.info, request.info, vehicle_info);
-      get_dimension<I>().calculate_backward(prev_node.get_dimension<I>(), arc_value);
+      get_dimension<I>().calculate_backward(prev_node.get_dimension<I>(), arc_value, vehicle_info);
     });
   }
 
@@ -296,6 +297,7 @@ class node_t {
   mismatch_node_t<i_t, f_t> mismatch_dim;
   break_node_t<i_t, f_t> break_dim;
   vehicle_fixed_cost_node_t<i_t, f_t> vehicle_fixed_cost_dim;
+  soft_time_node_t<i_t, f_t> soft_time_dim;
 
   static constexpr int max_capacity_dim = decltype(capacity_dim)::max_capacity_dim;
 };

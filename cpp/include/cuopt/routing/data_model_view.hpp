@@ -287,6 +287,26 @@ class data_model_view_t {
                                bool validate_input = true);
 
   /**
+   * @brief Set the cost of assigning a specific vehicle to each order.
+   *        costs[order_id] = cost of vehicle vehicle_id serving order order_id.
+   *        A cost of 0 means a free assignment; a finite cost > 0 will be minimized
+   *        as the VEHICLE_ORDER_COST objective. If add_vehicle_order_match has already
+   *        marked a (vehicle, order) pair as infeasible, specifying a finite cost for
+   *        that pair is an error.
+   *
+   * @param vehicle_id  vehicle id for which costs are specified
+   * @param costs       device memory pointer to n_orders integer values
+   * @param n_orders    number of orders (must match the problem size)
+   */
+  void set_vehicle_order_cost(const i_t vehicle_id, i_t const* costs, const i_t n_orders);
+
+  /**
+   * @brief Get the vehicle order cost map
+   */
+  const std::unordered_map<i_t, raft::device_span<i_t const>>& get_vehicle_order_cost()
+    const noexcept;
+
+  /**
    * @brief In fully heterogenous fleet mode, vehicle can take different amount
    * of times to complete a task based on their profile and the order being
    * served. Here we enable that ability to the user by setting for each vehicle
@@ -352,6 +372,15 @@ class data_model_view_t {
    * @param[in] validate_input runs expensive input checks, Defaults to true
    */
   void set_order_prizes(f_t const* prizes, bool validate_input = true);
+
+  /**
+   * @brief Set per-order weights for the soft time scheduling objective.
+   *        Weight controls the priority of each order in the weighted completion
+   *        time and lateness penalty objectives.
+   *
+   * @param[in] order_weights Per-order weight array (integer, size = num_orders)
+   */
+  void set_order_weights(i_t const* order_weights);
 
   /**
    * @brief Add precedence constraints for a given order.
@@ -571,6 +600,27 @@ class data_model_view_t {
   raft::device_span<f_t const> get_order_prizes() const noexcept;
 
   /**
+   * @brief Get per-order weights set via set_order_weights
+   * @return raft::device_span<i_t const>
+   */
+  raft::device_span<i_t const> get_order_weights() const noexcept;
+
+  /**
+   * @brief Set per-order due time constraint for the soft time scheduling objective.
+   *        Each order must begin processing by due_time[k] (measured from t=0).
+   *        Lateness penalty = max(0, start_k - due_time_k) * order_weight_k.
+   *
+   * @param[in] due_times Per-order due time array (integer, size = num_orders)
+   */
+  void set_order_due_times(i_t const* due_times);
+
+  /**
+   * @brief Get per-order due times set via set_order_due_times
+   * @return raft::device_span<i_t const>
+   */
+  raft::device_span<i_t const> get_order_due_times() const noexcept;
+
+  /**
    * @brief Get pickup delivery pairs
    * @return Pair of pointers containing pick up and delivery indices
    */
@@ -633,6 +683,8 @@ class data_model_view_t {
   detail::order_time_window_t<i_t, f_t> order_tw_{};
 
   raft::device_span<f_t const> order_prizes_;
+  raft::device_span<i_t const> order_weights_;
+  raft::device_span<i_t const> order_due_times_;
 
   i_t const* start_locations_{nullptr};
   i_t const* return_locations_{nullptr};
@@ -640,6 +692,7 @@ class data_model_view_t {
   bool const* skip_first_trip_{nullptr};
   std::unordered_map<i_t, raft::device_span<i_t const>> vehicle_order_match_;
   std::unordered_map<i_t, raft::device_span<i_t const>> order_vehicle_match_;
+  std::unordered_map<i_t, raft::device_span<i_t const>> vehicle_order_cost_;
   std::unordered_map<i_t, raft::device_span<i_t const>> order_service_times_;
   objective_t const* objective_{};
   f_t const* objective_weights_{};

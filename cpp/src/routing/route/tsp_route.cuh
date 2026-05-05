@@ -85,8 +85,8 @@ class tsp_route_t {
   HDI static size_t get_shared_size(i_t route_size)
   {
     // pred, succ
-    size_t byte_size = 2 * route_size * sizeof(NodeInfo<i_t>);
-    return raft::alignTo(byte_size, sizeof(double));
+    size_t byte_size = route_size * sizeof(NodeInfo<i_t>);
+    return 2 * raft::alignTo(byte_size, sizeof(double));
   }
 
   // pred ids

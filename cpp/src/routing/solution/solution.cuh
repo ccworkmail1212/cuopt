@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -92,6 +92,17 @@ DI node_t<i_t, f_t, REQUEST> create_node(const typename problem_t<i_t, f_t>::vie
 
   node.prize_dim.prize = problem.order_info.prizes[node_idx];
 
+  if (problem.dimensions_info.has_dimension(dim_t::SOFT_TIME) &&
+      !problem.order_info.order_weights.empty()) {
+    node.soft_time_dim.order_weight = problem.order_info.order_weights[node_idx];
+    node.soft_time_dim.node_info    = node_info;
+    node.soft_time_dim.earliest_time =
+      !problem.order_info.earliest_time.empty() ? problem.order_info.earliest_time[node_idx] : 0;
+    node.soft_time_dim.due_time = !problem.order_info.order_due_times.empty()
+                                    ? problem.order_info.order_due_times[node_idx]
+                                    : 0;
+  }
+
   node.request = request_info_t<i_t, REQUEST>(node_info, brother_info);
   return node;
 }
@@ -159,6 +170,18 @@ constexpr node_t<i_t, f_t, REQUEST> create_node(const problem_t<i_t, f_t>* probl
   });
 
   node.prize_dim.prize = problem->order_info_h.prizes[node_idx];
+
+  if (problem->dimensions_info.has_dimension(dim_t::SOFT_TIME) &&
+      !problem->order_info_h.order_weights.empty()) {
+    node.soft_time_dim.order_weight  = problem->order_info_h.order_weights[node_idx];
+    node.soft_time_dim.node_info     = node_info;
+    node.soft_time_dim.earliest_time = !problem->order_info_h.earliest_time.empty()
+                                         ? problem->order_info_h.earliest_time[node_idx]
+                                         : 0;
+    node.soft_time_dim.due_time      = !problem->order_info_h.order_due_times.empty()
+                                         ? problem->order_info_h.order_due_times[node_idx]
+                                         : 0;
+  }
 
   node.request = request_info_t<i_t, REQUEST>(node_info, brother_info);
   return node;
@@ -244,8 +267,13 @@ DI node_t<i_t, f_t, REQUEST> create_depot_node(const typename problem_t<i_t, f_t
     if (i < node.capacity_dim.n_capacity_dimensions) { node.capacity_dim.demand[i] = 0; }
   });
 
-  node.prize_dim.prize = 0.;
-  node.request         = request_info_t<i_t, REQUEST>(node_info, brother_info);
+  node.prize_dim.prize              = 0.;
+  node.soft_time_dim.order_weight   = 0;
+  node.soft_time_dim.node_info      = NodeInfo<i_t>{};  // default = DEPOT type
+  node.soft_time_dim.fwd_completion = static_cast<int32_t>(earliest);
+  node.soft_time_dim.fwd_lateness   = 0;
+  node.soft_time_dim.bwd_lateness_n = 0;
+  node.request                      = request_info_t<i_t, REQUEST>(node_info, brother_info);
   return node;
 }
 
@@ -280,8 +308,13 @@ constexpr node_t<i_t, f_t, REQUEST> create_depot_node(const problem_t<i_t, f_t>*
     if (i < node.capacity_dim.n_capacity_dimensions) { node.capacity_dim.demand[i] = 0; }
   });
 
-  node.prize_dim.prize = 0.;
-  node.request         = request_info_t<i_t, REQUEST>(node_info, brother_info);
+  node.prize_dim.prize              = 0.;
+  node.soft_time_dim.order_weight   = 0;
+  node.soft_time_dim.node_info      = NodeInfo<i_t>{};  // default = DEPOT type
+  node.soft_time_dim.fwd_completion = static_cast<int32_t>(earliest);
+  node.soft_time_dim.fwd_lateness   = 0;
+  node.soft_time_dim.bwd_lateness_n = 0;
+  node.request                      = request_info_t<i_t, REQUEST>(node_info, brother_info);
   return node;
 }
 
@@ -303,6 +336,13 @@ DI node_t<i_t, f_t, REQUEST> create_break_node(
   // FIXME:: setting the prize to zero for now.
   // When we support breaks through prize collection mechanism, this will change
   node.prize_dim.prize = 0.;
+
+  // order_weight = 0 for breaks (default); node_info carries BREAK type + index for service-time
+  // lookup via vehicle_info.break_durations in soft_time_node_t::calculate_forward.
+  // Mirror the TIME dimension window_start so calculate_forward waits for the break's
+  // actual earliest start (exact-time events have window_start == window_end).
+  node.soft_time_dim.node_info     = node_info;
+  node.soft_time_dim.earliest_time = special_nodes.earliest_time[index];
 
   node.request = request_info_t<i_t, REQUEST>(node_info, node_info);
   return node;

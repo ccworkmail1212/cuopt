@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -49,7 +49,11 @@ class capacity_node_t {
    *  \param[in] actual { Actual node data }
    *  \param[in][out] next { Has to contain the supply loaded/unloaded(negative load). Total
    * gathered and max_to_node will be filled.} */
-  void HDI calculate_forward(capacity_node_t& next, [[maybe_unused]] f_t dummy = 0) const noexcept
+  template <bool is_device = true>
+  void HDI
+  calculate_forward(capacity_node_t& next,
+                    [[maybe_unused]] f_t dummy,
+                    [[maybe_unused]] const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
     constexpr_for<max_capacity_dim>([&](auto i) {
       if (i < n_capacity_dimensions) {
@@ -62,7 +66,11 @@ class capacity_node_t {
   /*! \brief { Calculate prev node time backward data based on actual node}
    *           \param[in][out] prev { Has to contain the supply loaded/unloaded(negative load).
    * max_after will be filled.} */
-  void HDI calculate_backward(capacity_node_t& prev, [[maybe_unused]] f_t dummy = 0) const noexcept
+  template <bool is_device = true>
+  void HDI calculate_backward(
+    capacity_node_t& prev,
+    [[maybe_unused]] f_t dummy,
+    [[maybe_unused]] const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
     constexpr_for<max_capacity_dim>([&](auto i) {
       if (i < n_capacity_dimensions) {

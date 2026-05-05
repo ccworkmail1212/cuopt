@@ -111,12 +111,10 @@ class tasks_route_t {
                                                               i_t n_nodes_route)
     {
       view_t v;
-      v.dim_info       = dim_info;
-      v.tasks_forward  = raft::device_span<i_t>{shmem, (size_t)n_nodes_route + 1};
-      v.tasks_backward = raft::device_span<i_t>{&v.tasks_forward.data()[n_nodes_route + 1],
-                                                (size_t)n_nodes_route + 1};
-
-      i_t* sh_ptr = &v.tasks_backward.data()[n_nodes_route + 1];
+      i_t* sh_ptr                           = shmem;
+      v.dim_info                            = dim_info;
+      thrust::tie(v.tasks_forward, sh_ptr)  = wrap_ptr_as_span<i_t>(sh_ptr, n_nodes_route + 1);
+      thrust::tie(v.tasks_backward, sh_ptr) = wrap_ptr_as_span<i_t>(sh_ptr, n_nodes_route + 1);
       return thrust::make_tuple(v, sh_ptr);
     }
 
@@ -144,7 +142,7 @@ class tasks_route_t {
                                     [[maybe_unused]] tasks_dimension_info_t dim_info)
   {
     // forward, backward
-    return 2 * route_size * sizeof(i_t);
+    return 2 * raft::alignTo(route_size * sizeof(i_t), sizeof(double));
   }
 
   tasks_dimension_info_t dim_info;

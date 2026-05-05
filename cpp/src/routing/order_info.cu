@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -233,6 +233,16 @@ void populate_order_info(data_model_view_t<i_t, f_t> const& data_model,
   }
 
   populate_time_windows(data_model, order_info_);
+
+  if (auto order_weights = data_model.get_order_weights(); order_weights.size() > 0) {
+    order_info_.v_order_weights_.resize(norders, stream_view);
+    raft::copy(order_info_.v_order_weights_.data(), order_weights.data(), norders, stream);
+  }
+
+  if (auto due_times = data_model.get_order_due_times(); due_times.size() > 0) {
+    order_info_.v_order_due_times_.resize(norders, stream_view);
+    raft::copy(order_info_.v_order_due_times_.data(), due_times.data(), norders, stream);
+  }
 }
 
 template void populate_order_info(data_model_view_t<int, float> const& data_model,

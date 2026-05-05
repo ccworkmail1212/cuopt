@@ -987,6 +987,107 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         super().set_order_service_times(service_times, vehicle_id)
 
     @catch_cuopt_exception
+    def set_vehicle_order_cost(self, vehicle_id, costs):
+        """
+        Set per-vehicle assignment costs for each order. Used with the
+        MISMATCH dimension to penalize or steer tool-to-lot assignments
+        in lot scheduling scenarios.
+
+        Parameters
+        ----------
+        vehicle_id : int
+            Vehicle (tool) id for which costs are being set
+        costs : cudf.Series dtype - int32
+            Integer assignment costs of size number of orders. costs[i] is
+            the cost incurred when vehicle_id processes order i.
+
+        Note: A user can set this multiple times. However, if it is
+              set more than once for the same vehicle, the costs list will
+              be overridden with the most recent function call.
+
+        Examples
+        --------
+        >>> n_locations = 4
+        >>> n_vehicles = 2
+        >>> d = routing.DataModel(n_locations, n_vehicles)
+        >>> # vehicle 0 prefers orders 0,1; vehicle 1 prefers orders 2,3
+        >>> d.set_vehicle_order_cost(0, cudf.Series([0, 0, 10, 10], dtype="int32"))
+        >>> d.set_vehicle_order_cost(1, cudf.Series([10, 10, 0, 0], dtype="int32"))
+        >>> cuopt_solution = routing.Solve(d)
+        """
+
+        validate_size(
+            costs,
+            "vehicle order costs",
+            self.get_num_orders(),
+            "number of orders",
+        )
+        validate_non_negative(costs, "vehicle order costs")
+        super().set_vehicle_order_cost(vehicle_id, costs)
+
+    @catch_cuopt_exception
+    def set_order_weights(self, order_weights):
+        """
+        Set per-order weights used to compute the weighted completion time (WCT)
+        objective. Higher-weight orders are prioritized for earlier processing.
+
+        Parameters
+        ----------
+        order_weights : cudf.Series dtype - int32
+            Non-negative integer weights of size number of orders. The depot
+            order should have weight 0.
+
+        Examples
+        --------
+        >>> n_locations = 4
+        >>> n_vehicles = 2
+        >>> d = routing.DataModel(n_locations, n_vehicles)
+        >>> d.set_order_weights(cudf.Series([0, 2, 1, 3], dtype="int32"))
+        >>> cuopt_solution = routing.Solve(d)
+        """
+
+        validate_size(
+            order_weights,
+            "order weights",
+            self.get_num_orders(),
+            "number of orders",
+        )
+        validate_non_negative(order_weights, "order weights")
+        super().set_order_weights(order_weights)
+
+    @catch_cuopt_exception
+    def set_order_due_times(self, due_times):
+        """
+        Set per-order due times (latest start times). An order's processing
+        must begin no later than its due time. Orders that start after their
+        due time incur a lateness penalty weighted by order_weight.
+
+        Parameters
+        ----------
+        due_times : cudf.Series dtype - int32
+            Non-negative integer due times of size number of orders.
+            Use a large value (e.g. 2147483647) to indicate no constraint
+            for a given order. The depot order should have a large value.
+
+        Examples
+        --------
+        >>> n_locations = 4
+        >>> n_vehicles = 2
+        >>> d = routing.DataModel(n_locations, n_vehicles)
+        >>> d.set_order_due_times(cudf.Series([2147483647, 4, 2147483647, 4], dtype="int32"))
+        >>> cuopt_solution = routing.Solve(d)
+        """
+
+        validate_size(
+            due_times,
+            "due times",
+            self.get_num_orders(),
+            "number of orders",
+        )
+        validate_non_negative(due_times, "due times")
+        super().set_order_due_times(due_times)
+
+    @catch_cuopt_exception
     def add_capacity_dimension(self, name, demand, capacity):
         """
         Add capacity dimensions to model the Capacitated Vehicle Routing

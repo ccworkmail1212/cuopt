@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -48,7 +48,11 @@ class time_node_t {
   double unavoidable_wait_backward = 0.;
 
   /*! \brief { Calculate next node forward time data based on actual node} */
-  void HDI calculate_forward(time_node_t& next, double time_between) const noexcept
+  template <bool is_device = true>
+  void HDI
+  calculate_forward(time_node_t& next,
+                    double time_between,
+                    [[maybe_unused]] const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
     next.departure_forward = departure_forward + time_between;
     next.excess_forward    = excess_forward;
@@ -72,7 +76,11 @@ class time_node_t {
   }
 
   /*! \brief { Calculate prev node time backward data based on actual node} */
-  void HDI calculate_backward(time_node_t& prev, double time_between) const noexcept
+  template <bool is_device = true>
+  void HDI calculate_backward(
+    time_node_t& prev,
+    double time_between,
+    [[maybe_unused]] const VehicleInfo<f_t, is_device>& vehicle_info) const noexcept
   {
     prev.departure_backward = departure_backward - time_between;
     prev.excess_backward    = excess_backward;

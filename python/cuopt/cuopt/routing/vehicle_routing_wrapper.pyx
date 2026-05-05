@@ -122,7 +122,17 @@ class Objective(IntEnum):
 
     PRIZE               - Models with respect to prizes collected by the
                           serviced orders
-    VEHICLE_FIXED_COST                - Models cost per vehicle. Enabled when set_vehicle_fixed_costs is used.
+    VEHICLE_FIXED_COST  - Models cost per vehicle. Enabled when set_vehicle_fixed_costs is used.
+
+    WEIGHTED_COMPLETION_TIME - Sum of order_weight * completion_time for each order.
+                               Enabled when set_order_weights is used.
+
+    VEHICLE_ORDER_COST  - Sum of vehicle-order assignment costs. Enabled
+                          when set_vehicle_order_cost is used.
+
+    LATENESS            - Sum of max(0, actual_start - due_time) * order_weight per order.
+                          Penalizes orders that start after their due time, weighted
+                          by order_weight. Enabled when set_order_due_times is used.
     """
 
     COST = objective_t.COST
@@ -131,6 +141,9 @@ class Objective(IntEnum):
     VARIANCE_ROUTE_SERVICE_TIME = objective_t.VARIANCE_ROUTE_SERVICE_TIME
     PRIZE = objective_t.PRIZE
     VEHICLE_FIXED_COST = objective_t.VEHICLE_FIXED_COST
+    WEIGHTED_COMPLETION_TIME = objective_t.WEIGHTED_COMPLETION_TIME
+    VEHICLE_ORDER_COST = objective_t.VEHICLE_ORDER_COST
+    LATENESS = objective_t.LATENESS
 
 
 class NodeType(IntEnum):
@@ -200,6 +213,9 @@ cdef class DataModel:
         self.vehicle_order_match = {}
         self.order_vehicle_match = {}
         self.order_service_times = {}
+        self.vehicle_order_cost = {}
+        self.order_weights = cudf.Series()
+        self.order_due_times = cudf.Series()
 
         self.initial_vehicle_ids = cudf.Series()
         self.initial_routes = cudf.Series()
@@ -425,6 +441,32 @@ cdef class DataModel:
             .__cuda_array_interface__['data'][0]
         self.c_data_model_view.get().set_order_service_times(
             <const int *> c_service_times, vehicle_id)
+
+    def set_vehicle_order_cost(self, vehicle_id, costs):
+        self.vehicle_order_cost[vehicle_id] = type_cast(
+            costs, np.int32, "vehicle_order_cost"
+        )
+        cdef uintptr_t c_costs =\
+            self.vehicle_order_cost[vehicle_id] \
+            .__cuda_array_interface__['data'][0]
+        self.c_data_model_view.get().set_vehicle_order_cost(
+            vehicle_id, <const int *> c_costs, len(costs))
+
+    def set_order_weights(self, order_weights):
+        self.order_weights = type_cast(order_weights, np.int32, "order_weights")
+        cdef uintptr_t c_order_weights = (
+            self.order_weights.__cuda_array_interface__['data'][0]
+        )
+        self.c_data_model_view.get().set_order_weights(
+            <const int *> c_order_weights)
+
+    def set_order_due_times(self, due_times):
+        self.order_due_times = type_cast(due_times, np.int32, "due_times")
+        cdef uintptr_t c_due_times = (
+            self.order_due_times.__cuda_array_interface__['data'][0]
+        )
+        self.c_data_model_view.get().set_order_due_times(
+            <const int *> c_due_times)
 
     def add_break_dimension(
         self, break_earliest, break_latest, break_duration
