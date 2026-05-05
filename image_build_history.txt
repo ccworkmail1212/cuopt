@@ -1,8 +1,35 @@
-# workcc/cuopt-scheduling:26.6 完整建構過程
-# 從上到下：最新 → 最舊（底層）
-# ============================================================
-
+# workcc/cuopt-full:26.6 完整建構過程
 CREATED AT                  SIZE      CREATED BY
+2026-05-05T16:16:29+08:00   0B        CMD ["python" "-m" "cuopt_server.cuopt_service"]
+2026-05-05T16:16:29+08:00   0B        WORKDIR /cuopt
+2026-05-05T16:16:29+08:00   25.8kB    RUN /bin/sh -c chmod +x /cuopt/build.sh /usr/local/bin/cuopt-build # buildkit
+2026-05-05T16:16:28+08:00   0B        RUN /bin/sh -c rm -rf /cuopt/cpp/build /cuopt/cpp/build_* &&     find /cuopt -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true # buildkit
+2026-05-05T16:16:27+08:00   19.8kB    COPY build.sh VERSION RAPIDS_BRANCH pyproject.toml /cuopt/ # buildkit
+2026-05-05T16:16:26+08:00   165kB     COPY ci/ /cuopt/ci/ # buildkit
+2026-05-05T16:16:26+08:00   27.3kB    COPY thirdparty/ /cuopt/thirdparty/ # buildkit
+2026-05-05T16:16:26+08:00   4.65kB    COPY cmake/ /cuopt/cmake/ # buildkit
+2026-05-05T16:16:26+08:00   27.7MB    COPY python/ /cuopt/python/ # buildkit
+2026-05-05T16:16:25+08:00   354MB     COPY cpp/ /cuopt/cpp/ # buildkit
+2026-05-05T16:13:43+08:00   0B        CMD ["python" "-m" "cuopt_server.cuopt_service"]
+2026-05-05T16:13:43+08:00   0B        WORKDIR /cuopt
+2026-05-05T16:13:43+08:00   25.8kB    RUN /bin/sh -c chmod +x /cuopt/build.sh /usr/local/bin/cuopt-build # buildkit
+2026-05-05T16:13:42+08:00   0B        RUN /bin/sh -c rm -rf /cuopt/cpp/build /cuopt/cpp/build_* &&     find /cuopt -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true # buildkit
+2026-05-05T16:13:40+08:00   165kB     COPY ci/ /cuopt/ci/ # buildkit
+2026-05-05T16:13:40+08:00   17.9kB    COPY build.sh /cuopt/build.sh # buildkit
+2026-05-05T16:13:40+08:00   27.3kB    COPY thirdparty/ /cuopt/thirdparty/ # buildkit
+2026-05-05T16:13:40+08:00   4.65kB    COPY cmake/ /cuopt/cmake/ # buildkit
+2026-05-05T16:13:40+08:00   27.7MB    COPY python/ /cuopt/python/ # buildkit
+2026-05-05T16:13:39+08:00   354MB     COPY cpp/ /cuopt/cpp/ # buildkit
+2026-05-05T15:52:11+08:00   0B        CMD ["python" "-m" "cuopt_server.cuopt_service"]
+2026-05-05T15:52:11+08:00   0B        CMD ["python" "-m" "cuopt_server.cuopt_service"]
+2026-05-05T15:52:11+08:00   0B        WORKDIR /demo
+2026-05-05T15:52:11+08:00   7.16kB    COPY lot_scheduling_demo.py /demo/lot_scheduling_demo.py # buildkit
+2026-05-05T15:51:05+08:00   0B        CMD ["/bin/bash"]
+2026-05-05T15:51:05+08:00   0B        WORKDIR /demo
+2026-05-05T15:51:05+08:00   7.16kB    COPY lot_scheduling_demo.py /demo/lot_scheduling_demo.py # buildkit
+2026-05-05T15:50:28+08:00   0B        CMD ["python3" "lot_scheduling_demo.py"]
+2026-05-05T15:50:28+08:00   0B        WORKDIR /demo
+2026-05-05T15:50:28+08:00   7.16kB    COPY lot_scheduling_demo.py /demo/lot_scheduling_demo.py # buildkit
 2026-05-05T13:33:28+08:00   0B        CMD ["python3" "lot_scheduling_demo.py"]
 2026-05-05T13:33:28+08:00   0B        WORKDIR /demo
 2026-05-05T13:33:28+08:00   5.29kB    COPY lot_scheduling_demo.py /demo/lot_scheduling_demo.py # buildkit
