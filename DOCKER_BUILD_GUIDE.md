@@ -20,9 +20,8 @@
 | Image | 用途 | 大小 |
 |---|---|---|
 | `workcc/cuopt-allinone:26.6` | **完整開發環境**（改+build+run） | 8.59GB |
-| `nvidia/cuopt:26.6.0a-cuda12.9-py3.14` | allinone 的 base（build image 時需要） | 7.74GB |
 
-> 兩個 image 都需要在**有網路**的環境先 pull 好，再帶進公司。
+> `docker save workcc/cuopt-allinone:26.6` 會把 base image（`nvidia/cuopt`）的 layers 一起打包，**只需要這一個 image** 就能帶進公司離線使用。
 
 ---
 
@@ -161,14 +160,14 @@ docker run --rm -v $(pwd):/cuopt workcc/cuopt-allinone:26.6 \
 ### 匯出 / 匯入 image
 
 ```bash
-# 匯出（有網路的電腦）
+# 匯出（有網路的電腦）——只需要一個 tar，base image 的 layers 已包含在內
 docker save workcc/cuopt-allinone:26.6 | gzip > cuopt-allinone.tar.gz
-docker save nvidia/cuopt:26.6.0a-cuda12.9-py3.14 | gzip > cuopt-official.tar.gz
 
-# 匯入（公司電腦）
+# 匯入（公司電腦）——完全自給自足，不需要另外 load nvidia/cuopt
 docker load < cuopt-allinone.tar.gz
-docker load < cuopt-official.tar.gz
 ```
+
+> `docker save` 會把所有 layers（包含 `nvidia/cuopt` 的 base layers）一起打包，所以只需要一個 tar 檔案。
 
 ### 公司內 Build
 
