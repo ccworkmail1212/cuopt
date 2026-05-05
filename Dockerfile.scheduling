@@ -1,0 +1,7 @@
+FROM workcc/cuopt-scheduling:26.6
+
+COPY lot_scheduling_demo.py /demo/lot_scheduling_demo.py
+
+WORKDIR /demo
+
+CMD ["python3", "lot_scheduling_demo.py"]
