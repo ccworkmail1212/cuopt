@@ -92,6 +92,24 @@ print("功能 3：set_vehicle_order_cost")
 print(f"  machine_0 偏好 lot_0/1（成本 0），不擅長 lot_2/3（成本 5）")
 print(f"  machine_1 偏好 lot_2/3（成本 0），不擅長 lot_0/1（成本 5）")
 
+# ── 最小機台數：set_min_vehicles(2) ──────────────────────────
+# cuOpt routing 框架預設「先最小化機台數」，不設的話 1 台就夠用，machine_1 閒置
+# set_min_vehicles 是正式 API，要求 solver 至少使用 N 台機器
+d.set_min_vehicles(2)
+print("已設 set_min_vehicles(2)：要求至少使用 2 台機器")
+
+# ── 啟用 scheduling objectives ───────────────────────────────
+# 必須明確設定，否則 solver 只使用預設 COST，新功能資料被忽略
+d.set_objective_function(
+    cudf.Series([
+        routing.Objective.WEIGHTED_COMPLETION_TIME,  # 功能 1：加權完工時間
+        routing.Objective.LATENESS,                  # 功能 2：截止時間懲罰
+        routing.Objective.VEHICLE_ORDER_COST,        # 功能 3：機台偏好成本
+    ], dtype="int32"),
+    cudf.Series([1.0, 1.0, 1.0], dtype="float32"),  # 三個目標等權重
+)
+print("已啟用 objectives：WEIGHTED_COMPLETION_TIME + LATENESS + VEHICLE_ORDER_COST")
+
 # ── 求解 ─────────────────────────────────────────────────────
 print()
 print("求解中...")
@@ -128,3 +146,27 @@ for _, row in deliveries.iterrows():
     on_time = "（準時 ✓）" if due == INF or start <= due else f"（逾時！截止={due}）"
     pref = "（偏好機台 ✓）" if (row["truck_id"] == 0 and lot_idx <= 1) or (row["truck_id"] == 1 and lot_idx >= 2) else "（非偏好機台）"
     print(f"  {machine} 處理 {lot}：t={start} 開始  {on_time} {pref}")
+
+print()
+print("=" * 60)
+print("【框架限制說明】")
+print("=" * 60)
+print("""
+cuOpt routing 框架有硬性優先原則：
+  「先最小化機台數量，再最佳化 WCT 等目標」
+
+與真實 lot scheduling 期望衝突：
+  真實期望：機台可自由使用，純粹最小化 WCT
+  框架行為：能用 1 台就不用 2 台
+
+本 demo 使用 set_min_vehicles(2) 要求至少 2 台機器。
+這是 cuOpt 提供的正式 API，但本質上仍是「外部強制」，
+而非 solver 自行根據 WCT 判斷要用幾台。
+
+若不設 set_min_vehicles：
+  → solver 將 4 個工單全給 machine_0
+  → 目標值 84.0（vs 設了之後 57.0）
+
+此為 scheduling branch 與 routing 框架整合的
+已知限制，正式 release 前需進一步改善。
+""")
