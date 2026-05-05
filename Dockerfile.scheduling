@@ -1,6 +1,21 @@
 FROM workcc/cuopt-scheduling:26.6
 
-# 預設啟動 REST server（與官方 nvidia/cuopt image 相同行為）
-# gRPC server：docker run -e CUOPT_SERVER_TYPE=grpc ...
-# 互動模式：docker run --rm -it ... bash
+# Source code 完整打包進 image（公司離線環境備案）
+# 所有 cmake 依賴已在 image 內：CCCL(RAPIDS)、papilo/pslp/argparse(/opt/cuopt-deps)
+# 不需要任何外網就能直接 cuopt-build
+COPY cpp/        /cuopt/cpp/
+COPY python/     /cuopt/python/
+COPY cmake/      /cuopt/cmake/
+COPY thirdparty/ /cuopt/thirdparty/
+COPY ci/         /cuopt/ci/
+COPY build.sh VERSION RAPIDS_BRANCH pyproject.toml /cuopt/
+
+# 清除任何本機 build 產物，確保 image 只含 source
+RUN rm -rf /cuopt/cpp/build /cuopt/cpp/build_* && \
+    find /cuopt -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+
+RUN chmod +x /cuopt/build.sh /usr/local/bin/cuopt-build
+
+WORKDIR /cuopt
+
 CMD ["python", "-m", "cuopt_server.cuopt_service"]
