@@ -1,0 +1,10 @@
+FROM workcc/cuopt-full:26.6
+
+# 補上 rapids-cmake 離線依賴
+# cmake/RAPIDS.cmake 的 FetchContent 不受 --no-fetch-rapids 保護
+# 設定 FETCHCONTENT_SOURCE_DIR_RAPIDS_CMAKE 讓 cmake 使用本地 clone
+RUN git clone --depth=1 \
+    https://github.com/rapidsai/rapids-cmake.git \
+    /opt/cuopt-deps/rapids-cmake
+
+ENV FETCHCONTENT_SOURCE_DIR_RAPIDS_CMAKE=/opt/cuopt-deps/rapids-cmake
