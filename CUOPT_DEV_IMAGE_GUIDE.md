@@ -1,7 +1,7 @@
 # cuOpt Dev Image 使用指南
 
 **Image**: `workcc/cuopt-full:26.6-sm90a-dev`  
-**大小**: 12.4 GB  
+**大小**: ~12.4 GB  
 **GPU 架構**: SM90a（H200 / H100）  
 **基底**: cuOpt 26.06 scheduling branch，含完整 source code
 
@@ -21,6 +21,7 @@
 | 工具 | 版本 | 用途 |
 |------|------|------|
 | Claude Code | 2.1.131 | AI coding assistant |
+| Claude Code Router | latest | 公司內網 proxy（`claude-code-router`） |
 | code-server | 4.117.0 | VSCode（瀏覽器版） |
 | JupyterLab | 4.5.7 | 互動式 notebook |
 | Python | 3.14.4 | |
@@ -29,6 +30,8 @@
 | nvcc | 12.9.86 | CUDA compiler |
 | cuda-gdb | 12.9 | CUDA debugger |
 | gdb | — | C++ debugger |
+| openssh-server | 8.9p1 | SSH 連線（VS Code Remote SSH） |
+| python3-venv | — | Python 虛擬環境 |
 | gcc-12 / g++-12 | 12 | C++ compiler |
 | cmake | 4.3 | Build system |
 
@@ -99,9 +102,21 @@ jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.tok
 
 ### Claude Code
 ```bash
-# 在容器內執行
+# 直接連外網（有網路時）
 cd /cuopt
 claude
+
+# 透過公司內網 Router
+ANTHROPIC_BASE_URL=http://router-ip:port claude
+```
+
+### Claude Code Router（公司內網）
+```bash
+# 啟動 router（需先設定 config）
+claude-code-router
+
+# config 路徑
+~/.config/claude-code-router/config.json
 ```
 
 ---
@@ -114,6 +129,7 @@ claude
 | WSL2 內的瀏覽器 | `http://localhost:8080` | `http://localhost:8888` |
 | WSL2 外的 Windows | `http://WSL2-IP:8080` | `http://WSL2-IP:8888` |
 | 遠端 SSH | SSH tunnel 後用 `localhost` | SSH tunnel 後用 `localhost` |
+| VS Code Remote SSH | 直接連容器 port 22 | — |
 
 **查詢 WSL2 IP：**
 ```bash
@@ -124,6 +140,17 @@ hostname -I | awk '{print $1}'
 ```bash
 ssh -L 8080:localhost:8080 -L 8888:localhost:8888 user@server-ip
 # 然後瀏覽器開 http://localhost:8080
+```
+
+**VS Code Remote SSH 直連容器：**
+```bash
+# 啟動容器時開 port 22
+docker run --gpus all -it -p 22:22 -p 8080:8080 -p 8888:8888 ... workcc/cuopt-full:26.6-sm90a-dev bash
+
+# 容器內啟動 SSH daemon
+/usr/sbin/sshd
+
+# VS Code：Remote SSH → ssh root@localhost（密碼：cuopt）
 ```
 
 ---
