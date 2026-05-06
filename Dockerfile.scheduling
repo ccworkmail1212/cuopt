@@ -10,8 +10,13 @@ COPY thirdparty/ /cuopt/thirdparty/
 COPY ci/         /cuopt/ci/
 COPY build.sh VERSION RAPIDS_BRANCH pyproject.toml /cuopt/
 
-# 清除任何本機 build 產物，確保 image 只含 source
-RUN rm -rf /cuopt/cpp/build /cuopt/cpp/build_* && \
+# 保留 _deps/（含 rapids-cmake-src、papilo、pslp、argparse 等 cmake 依賴）
+# 只清 cmake cache 和 .o 檔，不清 _deps/
+RUN rm -f /cuopt/cpp/build/CMakeCache.txt && \
+    rm -rf /cuopt/cpp/build/CMakeFiles && \
+    rm -rf /cuopt/cpp/build/*.so /cuopt/cpp/build/*.a \
+           /cuopt/cpp/build/cuopt* /cuopt/cpp/build/bin \
+           /cuopt/cpp/build/install /cuopt/cpp/build/python_build && \
     find /cuopt -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 
 RUN chmod +x /cuopt/build.sh /usr/local/bin/cuopt-build
