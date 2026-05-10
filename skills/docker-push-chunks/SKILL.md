@@ -7,13 +7,15 @@ origin: skill-evolution
 
 # Docker Image Chunked Push Skill
 
+**Context (cuOpt project):** The company only allows NVIDIA official images at any size; all custom images must be < 2GB. cuOpt images are 9–11GB, so they cannot be pushed as-is. Solution: split into chunks (each < 1.5GB), wrap each in an alpine image, push separately, reassemble on target with `docker load`.
+
 Split a large Docker image into multiple small chunk images, push each chunk to Docker Hub, then reassemble on the target machine.
 
 **When to use:**
+- Company policy limits each custom image to < 2GB (primary reason for cuOpt)
 - Local upload bandwidth is too low to push a large image directly (< 5 Mbps upload)
 - Docker Hub rejects large layers (`unexpected EOF` during push)
-- Target environment has per-image size limits (e.g. company policy: each image < 2GB)
-- Need to transport a large image through a slow or restricted channel
+- Need to transport a large image to an air-gapped or offline network
 
 ---
 
