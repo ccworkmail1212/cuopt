@@ -219,6 +219,68 @@ docker images | grep "${NAME%-part*}" | grep -v "\-part\-"
 
 ---
 
+## After Reassembly: Using the cuOpt Image
+
+After `docker load` completes, the full image is available locally. Choose the right commands depending on which image you loaded:
+
+### cuopt-allinone（任何 GPU，可 build + run）
+
+```bash
+# Build cuOpt from source（需先有 source code）
+docker run --gpus all --rm \
+    -v ~/cuopt:/cuopt \
+    -v cuopt-ccache:/root/.cache/ccache \
+    workcc/cuopt-allinone:26.6 \
+    cuopt-build
+
+# 互動模式（改 code、執行測試）
+docker run --gpus all --rm -it \
+    -v ~/cuopt:/cuopt \
+    -v cuopt-ccache:/root/.cache/ccache \
+    workcc/cuopt-allinone:26.6
+
+# 跑 Python 腳本
+docker run --gpus all --rm \
+    -v ~/cuopt:/cuopt \
+    workcc/cuopt-allinone:26.6 \
+    python3 my_script.py
+```
+
+### cuopt-full-h200（H200 only，只能 run）
+
+```bash
+# 互動模式
+docker run --gpus all --rm -it workcc/cuopt-full-h200:26.6 bash
+
+# 執行 Python 程式
+docker run --gpus all --rm \
+    -v ~/scripts:/workspace \
+    --workdir /workspace \
+    workcc/cuopt-full-h200:26.6 \
+    python3 my_script.py
+```
+
+### cuopt-full-h200-sm90a（H200 only，可 build）
+
+```bash
+# Build（在 H200 機器上）
+docker run --gpus all --rm \
+    -v ~/cuopt:/cuopt \
+    -v cuopt-ccache:/root/.cache/ccache \
+    workcc/cuopt-full-h200-sm90a:26.6 \
+    cuopt-build
+```
+
+載入後 image 名稱就是**原始 image 名**（`workcc/cuopt-allinone:26.6` 等），chunk images（`workcc/cuopt-allinone-part-aa` 等）是搬運用的，載完可以刪掉節省磁碟空間：
+
+```bash
+for s in aa ab ac ad ae af ag ah ai; do
+    docker rmi workcc/cuopt-allinone-part-${s}:26.6
+done
+```
+
+---
+
 ## Gotchas
 
 ### `unexpected EOF` during push
